@@ -9,6 +9,8 @@ GFLAGS = -x
 RM = rm -f
 TAR = tar
 
+.PHONY: all tar clean
+
 all: $(APP)
 
 $(APP): main.go health.go yumfile.go yumrepo.go yumrepo_mirror.go
