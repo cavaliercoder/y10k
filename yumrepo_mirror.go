@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 )
@@ -25,6 +26,15 @@ type YumRepoMirror struct {
 
 func (c *YumRepoMirror) Validate() error {
 	// TODO validate mirror fields before processing
+
+	if c.YumRepo.ID == "" {
+		return errors.New("Upstream repository has no ID specified")
+	}
+
+	if c.YumRepo.MirrorListURL == "" && c.YumRepo.BaseURL == "" {
+		return errors.New("Upstream repository has no mirror list or base URL")
+	}
+
 	return nil
 }
 

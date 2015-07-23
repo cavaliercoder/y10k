@@ -2,29 +2,83 @@ package main
 
 import (
 	"bufio"
-	"flag"
 	"fmt"
+	"github.com/codegangsta/cli"
 	"os"
 	"os/exec"
 	"strings"
 )
 
-var DebugMode = false
+var (
+	DebugMode   = false
+	YumfilePath = ""
+)
 
 func main() {
-	// parse flags
-	flag.BoolVar(&DebugMode, "d", false, "print debug output")
-	flag.Parse()
-
-	// load default Yumfile
-	yumfile, err := LoadYumfile("Yumfile")
-	PanicOn(err)
-
 	// check system health
 	if err := HealthCheck(); err != nil {
 		Fatalf(err, "Health check failed")
 	}
 
+	// route request
+	app := cli.NewApp()
+	app.Name = "y10k"
+	app.Version = "0.1.0"
+	app.Usage = "simplied yum mirror management"
+	app.Flags = []cli.Flag{
+		cli.BoolFlag{
+			Name:  "debug, d",
+			Usage: "print debug output",
+		},
+	}
+
+	app.Commands = []cli.Command{
+		{
+			Name:  "yumfile",
+			Usage: "work with a Yumfile",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "file, f",
+					Usage: "path to Yumfile",
+					Value: "./Yumfile",
+				},
+			},
+			Before: func(context *cli.Context) error {
+				YumfilePath = context.String("file")
+				return nil
+			},
+			Subcommands: []cli.Command{
+				{
+					Name:   "validate",
+					Usage:  "validate a Yumfile's syntax",
+					Action: ActionYumfileValidate,
+				},
+				{
+					Name:   "sync",
+					Usage:  "syncronize repos described in a Yumfile",
+					Action: ActionYumfileSync,
+				},
+			},
+		},
+	}
+
+	app.Before = func(context *cli.Context) error {
+		DebugMode = context.GlobalBool("debug")
+		return nil
+	}
+
+	app.Run(os.Args)
+}
+
+func ActionYumfileValidate(context *cli.Context) {
+	_, err := LoadYumfile(YumfilePath)
+	PanicOn(err)
+	Printf("Yumfile appears valid\n")
+}
+
+func ActionYumfileSync(context *cli.Context) {
+	yumfile, err := LoadYumfile(YumfilePath)
+	PanicOn(err)
 	PanicOn(yumfile.Sync())
 }
 

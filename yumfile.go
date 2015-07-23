@@ -18,6 +18,8 @@ var boolMap = map[bool]int{
 
 // LoadYumfile loads a Yumfile from a json formated file
 func LoadYumfile(path string) (*Yumfile, error) {
+	Dprintf("Loading Yumfile: %s\n", path)
+
 	yumfile := Yumfile{}
 
 	// open file
