@@ -2,28 +2,23 @@ package main
 
 import (
 	"bufio"
+	"flag"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 )
 
-var DebugMode = true
+var DebugMode = false
 
 func main() {
-	yumfile := Yumfile{
-		YumRepos: []RepoMirror{
-			RepoMirror{
-				YumRepo: YumRepo{
-					ID:         "zabbix-2.4.el7.x86_64",
-					Name:       "Zabbix 2.4 EL7 x86_64",
-					BaseURL:    "http://repo.zabbix.com/zabbix/2.4/rhel/7/x86_64/",
-					GPGCheck:   true,
-					GPGKeyPath: "http://repo.zabbix.com/RPM-GPG-KEY-ZABBIX",
-				},
-			},
-		},
-	}
+	// parse flags
+	flag.BoolVar(&DebugMode, "d", false, "print debug output")
+	flag.Parse()
+
+	// load default Yumfile
+	yumfile, err := LoadYumfile("Yumfile")
+	PanicOn(err)
 
 	// check system health
 	if err := HealthCheck(); err != nil {
@@ -31,7 +26,6 @@ func main() {
 	}
 
 	PanicOn(yumfile.Sync())
-	PanicOn(yumfile.Update())
 }
 
 func PanicOn(err error) {

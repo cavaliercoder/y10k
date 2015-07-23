@@ -11,7 +11,7 @@ TAR = tar
 
 all: $(APP)
 
-$(APP): main.go health.go yumfile.go yumrepo.go
+$(APP): main.go health.go yumfile.go yumrepo.go yumrepo_mirror.go
 	$(GO) build -o $(APP) $(GFLAGS)
 
 tar: $(APP) README.md
