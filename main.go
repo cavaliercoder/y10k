@@ -15,11 +15,6 @@ var (
 )
 
 func main() {
-	// check system health
-	if err := HealthCheck(); err != nil {
-		Fatalf(err, "Health check failed")
-	}
-
 	// route request
 	app := cli.NewApp()
 	app.Name = "y10k"
@@ -27,8 +22,9 @@ func main() {
 	app.Usage = "simplied yum mirror management"
 	app.Flags = []cli.Flag{
 		cli.BoolFlag{
-			Name:  "debug, d",
-			Usage: "print debug output",
+			Name:   "debug, d",
+			Usage:  "print debug output",
+			EnvVar: "Y10K_DEBUG",
 		},
 	}
 
@@ -54,6 +50,11 @@ func main() {
 					Action: ActionYumfileValidate,
 				},
 				{
+					Name:   "list",
+					Usage:  "list repositories in a Yumfile",
+					Action: ActionYumfileList,
+				},
+				{
 					Name:   "sync",
 					Usage:  "syncronize repos described in a Yumfile",
 					Action: ActionYumfileSync,
@@ -64,6 +65,12 @@ func main() {
 
 	app.Before = func(context *cli.Context) error {
 		DebugMode = context.GlobalBool("debug")
+
+		// check system health
+		if err := HealthCheck(); err != nil {
+			Fatalf(err, "Health check failed")
+		}
+
 		return nil
 	}
 
@@ -71,9 +78,20 @@ func main() {
 }
 
 func ActionYumfileValidate(context *cli.Context) {
-	_, err := LoadYumfile(YumfilePath)
+	yumfile, err := LoadYumfile(YumfilePath)
 	PanicOn(err)
-	Printf("Yumfile appears valid\n")
+	Printf("Yumfile appears valid (%d repos)\n", len(yumfile.YumRepos))
+}
+
+func ActionYumfileList(context *cli.Context) {
+	yumfile, err := LoadYumfile(YumfilePath)
+	PanicOn(err)
+
+	repoCount := len(yumfile.YumRepos)
+	padding := (len(fmt.Sprintf("%d", repoCount)) * 2) + 1
+	for i, repo := range yumfile.YumRepos {
+		fmt.Printf("%*s %s\n", padding, fmt.Sprintf("%d/%d", i+1, repoCount), repo.YumRepo.ID)
+	}
 }
 
 func ActionYumfileSync(context *cli.Context) {
