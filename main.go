@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-var DebugMode = false
+var DebugMode = true
 
 func main() {
 	yumfile := Yumfile{
@@ -25,14 +25,29 @@ func main() {
 		},
 	}
 
-	yumfile.Sync()
-	yumfile.Update()
+	// check system health
+	if err := HealthCheck(); err != nil {
+		Fatalf(err, "Health check failed")
+	}
+
+	PanicOn(yumfile.Sync())
+	PanicOn(yumfile.Update())
 }
 
 func PanicOn(err error) {
 	if err != nil {
-		panic(err)
+		Fatalf(err, "Fatal error")
 	}
+}
+
+func Fatalf(err error, format string, a ...interface{}) {
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR: %s: %s\n", fmt.Sprintf(format, a...), err.Error())
+	} else {
+		fmt.Fprintf(os.Stderr, "ERROR: %s\n", fmt.Sprintf(format, a...))
+	}
+
+	os.Exit(1)
 }
 
 func Printf(format string, a ...interface{}) {
@@ -40,7 +55,9 @@ func Printf(format string, a ...interface{}) {
 }
 
 func Dprintf(format string, a ...interface{}) {
-	fmt.Fprintf(os.Stderr, fmt.Sprintf("debug: %s", format), a...)
+	if DebugMode {
+		fmt.Fprintf(os.Stderr, fmt.Sprintf("DEBUG: %s", format), a...)
+	}
 }
 
 func Exec(path string, args ...string) error {
