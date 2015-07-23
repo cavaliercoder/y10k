@@ -58,12 +58,27 @@ func (c *Yumfile) Validate() error {
 	return nil
 }
 
+func (c *Yumfile) Repo(id string) *YumRepoMirror {
+	for _, mirror := range c.YumRepos {
+		if mirror.YumRepo.ID == id {
+			return &mirror
+		}
+	}
+
+	return nil
+}
+
 // Sync processes all repository mirrors defined in a Yumfile
 func (c *Yumfile) Sync() error {
 	// sync each repo
 	for _, mirror := range c.YumRepos {
-		mirror.Sync()
-		mirror.Update()
+		if err := mirror.Sync(); err != nil {
+			return err
+		}
+
+		if err := mirror.Update(); err != nil {
+			return err
+		}
 	}
 
 	return nil

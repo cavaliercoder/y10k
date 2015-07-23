@@ -1,16 +1,23 @@
 package main
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
 )
 
 const (
-	repoPrefix     = "tmp-y10k-"
-	repoFilePrefix = "tmp-y10k-"
-	repoFileSuffix = ".repo"
-	repoFileDir    = "/etc/yum.repos.d"
+	repoPrefix      = "tmp-y10k-"
+	repoFilePrefix  = "tmp-y10k-"
+	repoFileSuffix  = ".repo"
+	repoFileDir     = "/etc/yum.repos.d"
+	repoqueryFormat = "%{name} %{version} %{release} %{buildtime} %{filetime}"
 )
 
 type YumRepoMirror struct {
@@ -36,6 +43,11 @@ func (c *YumRepoMirror) Validate() error {
 	}
 
 	return nil
+}
+
+func (c *YumRepoMirror) FullLocalPath() string {
+	path, _ := filepath.Abs(c.LocalPath)
+	return path
 }
 
 func (c *YumRepoMirror) repoFilePath() string {
@@ -161,4 +173,63 @@ func (c *YumRepoMirror) Update() error {
 	Exec("createrepo", args...)
 
 	return nil
+}
+
+func (c *YumRepoMirror) QueryAll() ([]RpmFile, error) {
+	results := []RpmFile{}
+
+	// build command and args
+	args := []string{
+		"--all",
+		"--show-duplicates",
+		"--disablerepo=*",
+		fmt.Sprintf("--queryformat=%s", repoqueryFormat),
+		fmt.Sprintf("--enablerepo=%s", c.YumRepo.ID),
+		fmt.Sprintf("--repofrompath=%s,file://%s", c.YumRepo.ID, c.FullLocalPath()),
+	}
+	cmd := exec.Command("repoquery", args...)
+	Dprintf("exec: %s %s\n", cmd.Path, strings.Join(args, " "))
+
+	// attach to stdout
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return results, err
+	}
+
+	scanner := bufio.NewScanner(stdout)
+	go func() {
+		for scanner.Scan() {
+			fields := strings.Split(scanner.Text(), " ")
+			buildTime, err := strconv.Atoi(fields[3])
+			if err != nil {
+				Dprintf("Cannot convert string '%s' to an integer\n", fields[3])
+			}
+
+			fileTime, err := strconv.Atoi(fields[4])
+			if err != nil {
+				Dprintf("Cannot convert string '%s' to an integer\n", fields[4])
+			}
+
+			rpm := RpmFile{
+				Name:      fields[0],
+				Version:   fields[1],
+				Release:   fields[2],
+				BuildTime: time.Unix(int64(buildTime), 0),
+				FileTime:  time.Unix(int64(fileTime), 0),
+			}
+
+			results = append(results, rpm)
+		}
+	}()
+
+	// execute and wait
+	if err := cmd.Start(); err != nil {
+		return results, err
+	}
+
+	if err := cmd.Wait(); err != nil {
+		return results, err
+	}
+
+	return results, nil
 }

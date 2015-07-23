@@ -88,6 +88,16 @@ func ActionYumfileValidate(context *cli.Context) {
 	yumfile, err := LoadYumfile(YumfilePath)
 	PanicOn(err)
 	Printf("Yumfile appears valid (%d repos)\n", len(yumfile.YumRepos))
+
+	// DEBUG print rpms
+	for _, repo := range yumfile.YumRepos {
+		rpms, _ := repo.QueryAll()
+
+		for _, rpm := range rpms {
+			fmt.Printf("%s %s\n", rpm.Name, rpm.FileTime)
+		}
+
+	}
 }
 
 func ActionYumfileList(context *cli.Context) {
@@ -104,7 +114,19 @@ func ActionYumfileList(context *cli.Context) {
 func ActionYumfileSync(context *cli.Context) {
 	yumfile, err := LoadYumfile(YumfilePath)
 	PanicOn(err)
-	PanicOn(yumfile.Sync())
+
+	repo := context.Args().First()
+	if repo == "" {
+		PanicOn(yumfile.Sync())
+	} else {
+		mirror := yumfile.Repo(repo)
+		if mirror == nil {
+			Fatalf(nil, "No such repo found in Yumfile: %s", repo)
+		}
+
+		PanicOn(mirror.Sync())
+		PanicOn(mirror.Update())
+	}
 }
 
 func PanicOn(err error) {

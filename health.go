@@ -6,9 +6,10 @@ import (
 	"regexp"
 )
 
-var yumVersionPattern = regexp.MustCompile("^(.*)")
-var rpmVersionPattern = regexp.MustCompile("^RPM version (.*)")
 var createrepoVersionPattern = regexp.MustCompile("^createrepo\\s+(.*)")
+var repoqueryVersionPattern = regexp.MustCompile("^Repoquery version (.*)")
+var rpmVersionPattern = regexp.MustCompile("^RPM version (.*)")
+var yumVersionPattern = regexp.MustCompile("^(.*)")
 
 func HealthCheck() error {
 	var colWidth int = 12
@@ -79,6 +80,23 @@ func HealthCheck() error {
 	}
 
 	Dprintf("  %-*s%s\n", colWidth, "createrepo:", msg)
+
+	// check for repoquery
+	cmd = exec.Command("repoquery", "--version")
+	out, err = cmd.CombinedOutput()
+	if err != nil {
+		return err
+	} else {
+		// extract version string
+		matches := repoqueryVersionPattern.FindAllStringSubmatch(string(out), -1)
+		if len(matches) > 0 {
+			msg = fmt.Sprintf("%s (v%s)", cmd.Path, matches[0][1])
+		} else {
+			msg = string(out)
+		}
+	}
+
+	Dprintf("  %-*s%s\n", colWidth, "repoquery:", msg)
 
 	return nil
 }
