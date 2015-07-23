@@ -61,6 +61,13 @@ func main() {
 				},
 			},
 		},
+		{
+			Name:  "version",
+			Usage: "print the version of y10k",
+			Action: func(context *cli.Context) {
+				fmt.Printf("%s version %s\n", app.Name, app.Version)
+			},
+		},
 	}
 
 	app.Before = func(context *cli.Context) error {
