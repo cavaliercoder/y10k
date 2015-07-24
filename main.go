@@ -88,16 +88,6 @@ func ActionYumfileValidate(context *cli.Context) {
 	yumfile, err := LoadYumfile(YumfilePath)
 	PanicOn(err)
 	Printf("Yumfile appears valid (%d repos)\n", len(yumfile.YumRepos))
-
-	// DEBUG print rpms
-	for _, repo := range yumfile.YumRepos {
-		rpms, _ := repo.QueryAll()
-
-		for _, rpm := range rpms {
-			fmt.Printf("%s %s\n", rpm.Name, rpm.FileTime)
-		}
-
-	}
 }
 
 func ActionYumfileList(context *cli.Context) {
