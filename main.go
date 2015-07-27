@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/codegangsta/cli"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
 )
@@ -94,6 +95,23 @@ func main() {
 
 		return nil
 	}
+
+	// sig handler
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt)
+	go func() {
+		for _ = range c {
+			Printf("Caught SIGINT/Ctrl-C. Cleaning up...\n")
+
+			if cmd != nil {
+				Printf("Attempting to terminate %s (PID: %d)...\n", cmd.Path, cmd.Process.Pid)
+				cmd.Process.Kill()
+			}
+
+			Printf("Exiting\n")
+			os.Exit(2)
+		}
+	}()
 
 	app.Run(os.Args)
 }
