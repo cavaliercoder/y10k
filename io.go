@@ -110,6 +110,9 @@ func Exec(path string, args ...string) error {
 	}
 
 	cmd = exec.Command(path, args...)
+	defer func() {
+		cmd = nil
+	}()
 
 	// parse stdout async
 	stdout, err := cmd.StdoutPipe()
