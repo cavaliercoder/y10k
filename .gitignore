@@ -1,3 +1,4 @@
 .vagrant/
 y10k
 *.log
+*.tar.gz

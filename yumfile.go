@@ -9,8 +9,8 @@ import (
 )
 
 type Yumfile struct {
-	YumRepos        []YumRepoMirror `json:"repos"`
-	LocalPathPrefix string          `json:"pathPrefix"`
+	YumRepos        []YumRepoMirror
+	LocalPathPrefix string
 }
 
 var boolMap = map[bool]int{
@@ -35,7 +35,7 @@ func strToBool(s string) (bool, error) {
 		return false, nil
 	}
 
-	return false, Errorf("Invalid boolean value: %s", s)
+	return false, NewErrorf("Invalid boolean value: %s", s)
 }
 
 // LoadYumfile loads a Yumfile from a json formated file
@@ -70,13 +70,11 @@ func LoadYumfile(path string) (*Yumfile, error) {
 			}
 
 			// create new mirror def
-			mirror = &YumRepoMirror{
-				YumfilePath:   path,
-				YumfileLineNo: n,
-				YumRepo: YumRepo{
-					ID: id,
-				},
-			}
+			mirror = NewYumRepoMirror()
+
+			mirror.YumfilePath = path
+			mirror.YumfileLineNo = n
+			mirror.YumRepo.ID = id
 		} else if matches := keyValPattern.FindAllStringSubmatch(s, -1); len(matches) > 0 {
 			// line is a key=val pair
 			key := matches[0][1]
@@ -89,7 +87,7 @@ func LoadYumfile(path string) (*Yumfile, error) {
 					yumfile.LocalPathPrefix = val
 
 				default:
-					return nil, Errorf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key)
+					return nil, NewErrorf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key)
 				}
 			} else {
 				// add key/val to current mirror
@@ -106,18 +104,18 @@ func LoadYumfile(path string) (*Yumfile, error) {
 					mirror.Architecture = val
 				case "newonly":
 					if b, err := strToBool(val); err != nil {
-						return nil, Errorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
 					} else {
 						mirror.NewOnly = b
 					}
 				default:
-					return nil, Errorf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key)
+					return nil, NewErrorf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key)
 				}
 			}
 		} else if commentPattern.MatchString(s) {
 			// ignore line
 		} else {
-			return nil, Errorf("Syntax error in Yumfile on line %d: %s", n, s)
+			return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, s)
 		}
 	}
 
@@ -161,15 +159,25 @@ func (c *Yumfile) Repo(id string) *YumRepoMirror {
 }
 
 // Sync processes all repository mirrors defined in a Yumfile
-func (c *Yumfile) Sync() error {
+func (c *Yumfile) Sync(breakOnError bool) error {
 	// sync each repo
 	for _, mirror := range c.YumRepos {
+		// sync packages
 		if err := mirror.Sync(); err != nil {
-			return err
-		}
-
-		if err := mirror.Update(); err != nil {
-			return err
+			if breakOnError {
+				return err
+			} else {
+				Errorf(err, "Error syncronizing repo '%s", mirror.YumRepo.ID)
+			}
+		} else {
+			// update database
+			if err := mirror.Update(); err != nil {
+				if breakOnError {
+					return err
+				} else {
+					Errorf(err, "Error updating database for repo '%s'", mirror.YumRepo.ID)
+				}
+			}
 		}
 	}
 

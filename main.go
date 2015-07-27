@@ -155,12 +155,13 @@ func ActionYumfileSync(context *cli.Context) {
 
 	repo := context.Args().First()
 	if repo == "" {
-		if err := yumfile.Sync(); err != nil {
+		// sync/update all repos in Yumfile
+		if err := yumfile.Sync(false); err != nil {
 			Fatalf(err, "Error running Yumfile")
 		}
 	} else {
+		// sync/update one repo in the Yumfile
 		mirror := yumfile.Repo(repo)
-
 		if mirror == nil {
 			Fatalf(nil, "No such repo found in Yumfile: %s", repo)
 		}
@@ -181,6 +182,6 @@ func PanicOn(err error) {
 	}
 }
 
-func Errorf(format string, a ...interface{}) error {
+func NewErrorf(format string, a ...interface{}) error {
 	return errors.New(fmt.Sprintf(format, a...))
 }

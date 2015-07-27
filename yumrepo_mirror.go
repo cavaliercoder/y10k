@@ -21,26 +21,32 @@ const (
 )
 
 type YumRepoMirror struct {
-	YumRepo        YumRepo `json:"upstream,omitempty"`
-	CachePath      string  `json:"cachePath,omitempty"`
-	EnablePlugins  bool    `json:"enablePlugins,omitempty"`
-	IncludeSources bool    `json:"includeSources,omitempty"`
-	LocalPath      string  `json:"localPath,omitempty"`
-	NewOnly        bool    `json:"newOnly,omitempty"`
-	DeleteRemoved  bool    `json:"deleteRemoved,omitempty"`
-	GPGCheck       bool    `json:"gpgCheck,omitempty"`
-	Architecture   string  `json:"arch,omitempty"`
-	YumfilePath    string  `json:"-"`
-	YumfileLineNo  int     `json:"_"`
+	YumRepo        YumRepo
+	CachePath      string
+	EnablePlugins  bool
+	IncludeSources bool
+	LocalPath      string
+	NewOnly        bool
+	DeleteRemoved  bool
+	GPGCheck       bool
+	Architecture   string
+	YumfilePath    string
+	YumfileLineNo  int
+}
+
+func NewYumRepoMirror() *YumRepoMirror {
+	return &YumRepoMirror{
+		YumRepo: *NewYumRepo(),
+	}
 }
 
 func (c *YumRepoMirror) Validate() error {
 	if c.YumRepo.ID == "" {
-		return Errorf("Upstream repository has no ID specified (in %s:%d)", c.YumfilePath, c.YumfileLineNo)
+		return NewErrorf("Upstream repository has no ID specified (in %s:%d)", c.YumfilePath, c.YumfileLineNo)
 	}
 
 	if c.YumRepo.MirrorListURL == "" && c.YumRepo.BaseURL == "" {
-		return Errorf("Upstream repository for '%s' has no mirror list or base URL (in %s:%d)", c.YumRepo.ID, c.YumfilePath, c.YumfileLineNo)
+		return NewErrorf("Upstream repository for '%s' has no mirror list or base URL (in %s:%d)", c.YumRepo.ID, c.YumfilePath, c.YumfileLineNo)
 	}
 
 	return nil
@@ -91,6 +97,14 @@ func (c *YumRepoMirror) installRepoFile() error {
 
 	if c.YumRepo.GPGKeyPath != "" {
 		fmt.Fprintf(f, "gpgkey=%s\n", c.YumRepo.GPGKeyPath)
+	}
+
+	if c.YumRepo.Timeout > 0 {
+		fmt.Fprintf(f, "timeout=%d\n", c.YumRepo.Timeout)
+	}
+
+	if c.YumRepo.Retries > 0 {
+		fmt.Fprintf(f, "retries=%d\n", c.YumRepo.Retries)
 	}
 
 	fmt.Fprintf(f, "\n")

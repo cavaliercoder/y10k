@@ -8,21 +8,23 @@ import (
 	"time"
 )
 
-// YumRepo represents a single Yum rpeository; typically defined in a `.repo`
+// YumRepo represents a single Yum repository; typically defined in a `.repo`
 // file in `/etc/yum.repos.d/`.
 type YumRepo struct {
-	ID            string    `json:"id",omitempty"`
-	Name          string    `json:"name,omitempty"`
-	Enabled       bool      `json:"enabled,omitempty"`
-	Revision      string    `json:"revision,omitempty"`
-	UpdateDate    time.Time `json:"updateDate,omitempty"`
-	BaseURL       string    `json:"baseUrl,omitempty"`
-	ExpireDate    time.Time `json:"expireDate,omitempty"`
-	Filename      string    `json:"fileName,omitempty"`
-	MirrorListURL string    `json:"mirrorListUrl,omitempty"`
-	GPGCAKey      string    `json:"gpgCaKey,omitempty"`
-	GPGCheck      bool      `json:"gpgCheck,omitempty"`
-	GPGKeyPath    string    `json:"gpgKeyPath,omitempty"`
+	ID            string
+	Name          string
+	Enabled       bool
+	Revision      string
+	UpdateDate    time.Time
+	BaseURL       string
+	ExpireDate    time.Time
+	Filename      string
+	MirrorListURL string
+	GPGCAKey      string
+	GPGCheck      bool
+	GPGKeyPath    string
+	Timeout       int
+	Retries       int
 }
 
 // yumTimeLayout is the Date/Time format used by Yum in its output
@@ -30,6 +32,14 @@ var yumTimeLayout = "Mon Jan 2 15:04:05 2006"
 
 // fieldPattern is the regex pattern used to match output from `yum repolist -v`
 var fieldPattern = regexp.MustCompile("^Repo-(\\w*)\\s*:\\s*(.*)$")
+
+func NewYumRepo() *YumRepo {
+	// defaults for a new repo
+	return &YumRepo{
+		Timeout: 3,
+		Retries: 3,
+	}
+}
 
 func GetInstalledRepos() ([]YumRepo, error) {
 	repos := make([]YumRepo, 0)

@@ -68,9 +68,8 @@ func Printf(format string, a ...interface{}) {
 	}
 }
 
-// Fatalf prints an error message to log or STDOUT and exits the program with
-// a non-zero exit code
-func Fatalf(err error, format string, a ...interface{}) {
+// Errorf prints an error message to log or STDOUT
+func Errorf(err error, format string, a ...interface{}) {
 	if logger == nil {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "ERROR: %s: %s\n", fmt.Sprintf(format, a...), err.Error())
@@ -84,7 +83,12 @@ func Fatalf(err error, format string, a ...interface{}) {
 			Logf(LOG_CAT_ERROR, format, a...)
 		}
 	}
+}
 
+// Fatalf prints an error message to log or STDOUT and exits the program with
+// a non-zero exit code
+func Fatalf(err error, format string, a ...interface{}) {
+	Errorf(err, format, a...)
 	os.Exit(1)
 }
 
@@ -102,7 +106,7 @@ func Dprintf(format string, a ...interface{}) {
 // Exec executes a system command and redirects the commands output to debug
 func Exec(path string, args ...string) error {
 	if cmd != nil {
-		return Errorf("Child process is aleady running (%s:%d)", cmd.Path, cmd.Process.Pid)
+		return NewErrorf("Child process is aleady running (%s:%d)", cmd.Path, cmd.Process.Pid)
 	}
 
 	cmd = exec.Command(path, args...)
