@@ -17,6 +17,7 @@ const (
 )
 
 var (
+	cmd           *exec.Cmd   = nil
 	logfileHandle *os.File    = nil
 	logger        *log.Logger = nil
 )
@@ -100,7 +101,11 @@ func Dprintf(format string, a ...interface{}) {
 
 // Exec executes a system command and redirects the commands output to debug
 func Exec(path string, args ...string) error {
-	cmd := exec.Command(path, args...)
+	if cmd != nil {
+		return Errorf("Child process is aleady running (%s:%d)", cmd.Path, cmd.Process.Pid)
+	}
+
+	cmd = exec.Command(path, args...)
 
 	// parse stdout async
 	stdout, err := cmd.StdoutPipe()
@@ -134,12 +139,15 @@ func Exec(path string, args ...string) error {
 	if err != nil {
 		return err
 	}
+	Dprintf("exec: started with PID: %d\n", cmd.Process.Pid)
 
 	// wait for process to finish
 	err = cmd.Wait()
 	if err != nil {
 		return err
 	}
+	Dprintf("exec: finished\n")
+	cmd = nil
 
 	return nil
 }

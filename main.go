@@ -137,15 +137,23 @@ func ActionYumfileSync(context *cli.Context) {
 
 	repo := context.Args().First()
 	if repo == "" {
-		PanicOn(yumfile.Sync())
+		if err := yumfile.Sync(); err != nil {
+			Fatalf(err, "Error running Yumfile")
+		}
 	} else {
 		mirror := yumfile.Repo(repo)
+
 		if mirror == nil {
 			Fatalf(nil, "No such repo found in Yumfile: %s", repo)
 		}
 
-		PanicOn(mirror.Sync())
-		PanicOn(mirror.Update())
+		if err := mirror.Sync(); err != nil {
+			Fatalf(err, "Error syncronizing repo '%s'", mirror.YumRepo.ID)
+		} else {
+			if err := mirror.Update(); err != nil {
+				Fatalf(err, "Error updating database for repo '%s'", mirror.YumRepo.ID)
+			}
+		}
 	}
 }
 

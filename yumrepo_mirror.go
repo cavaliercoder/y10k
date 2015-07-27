@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -144,7 +145,9 @@ func (c *YumRepoMirror) Sync() error {
 	}
 
 	// execute and capture output
-	Exec("reposync", args...)
+	if err := Exec("reposync", args...); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -157,7 +160,7 @@ func (c *YumRepoMirror) Update() error {
 		"--update",
 		"--database",
 		"--checkts",
-		"--workers=1",
+		fmt.Sprintf("--workers=%d", runtime.NumCPU()),
 	}
 
 	// debug switches
@@ -173,7 +176,9 @@ func (c *YumRepoMirror) Update() error {
 	}
 
 	// execute and capture output
-	Exec("createrepo", args...)
+	if err := Exec("createrepo", args...); err != nil {
+		return err
+	}
 
 	return nil
 }
