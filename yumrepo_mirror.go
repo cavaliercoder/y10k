@@ -64,6 +64,8 @@ func (c *YumRepoMirror) installRepoFile() error {
 
 	Dprintf("Installing repo file: %s\n", repoFilePath)
 
+	// TODO: Delete all orphaned repo files from previous runs
+
 	// create repo file
 	f, err := os.Create(repoFilePath)
 	if err != nil {

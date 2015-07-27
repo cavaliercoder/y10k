@@ -45,6 +45,7 @@ func LoadYumfile(path string) (*Yumfile, error) {
 	yumfile := Yumfile{}
 
 	// open file
+	// TODO: Add support for 'includes' statements in Yumfiles
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -140,7 +141,7 @@ func (c *Yumfile) Validate() error {
 			return err
 		}
 
-		// append path prefix
+		// append path prefix to each mirror
 		if c.LocalPathPrefix != "" {
 			c.YumRepos[i].LocalPath = fmt.Sprintf("%s/%s", c.LocalPathPrefix, mirror.LocalPath)
 		}
