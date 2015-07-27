@@ -10,7 +10,7 @@ import (
 var (
 	DebugMode   = false
 	YumfilePath = ""
-	LogfilePath = ""
+	LogFilePath = ""
 )
 
 func main() {
@@ -80,10 +80,10 @@ func main() {
 	app.Before = func(context *cli.Context) error {
 		// set globals from command line context
 		DebugMode = context.GlobalBool("debug")
-		LogfilePath = context.GlobalString("logfile")
+		LogFilePath = context.GlobalString("logfile")
 
 		// configure logging
-		InitLogfile()
+		InitLogFile()
 
 		// check system health
 		if err := HealthCheck(); err != nil {

@@ -21,23 +21,25 @@ var (
 	logger        *log.Logger = nil
 )
 
-func InitLogfile() {
-	if LogfilePath == "" {
+func InitLogFile() {
+	if LogFilePath == "" {
 		return
 	}
 
-	f, err := os.OpenFile(LogfilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	f, err := os.OpenFile(LogFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	PanicOn(err)
 
 	logger = log.New(f, "", log.LstdFlags)
 }
 
+// CloseLogFile cleans up any file handles associates with the log file.
 func CloseLogFile() {
 	if logfileHandle != nil {
 		PanicOn(logfileHandle.Close())
 	}
 }
 
+// Logf prints output to a logfile with a category and timestamp
 func Logf(category int, format string, a ...interface{}) {
 	var cat string
 	switch category {
@@ -56,6 +58,7 @@ func Logf(category int, format string, a ...interface{}) {
 	logger.Printf("%s %s", cat, fmt.Sprintf(format, a...))
 }
 
+// Printf prints output to STDOUT or the logfile
 func Printf(format string, a ...interface{}) {
 	if logger == nil {
 		fmt.Printf(format, a...)
@@ -64,6 +67,8 @@ func Printf(format string, a ...interface{}) {
 	}
 }
 
+// Fatalf prints an error message to log or STDOUT and exits the program with
+// a non-zero exit code
 func Fatalf(err error, format string, a ...interface{}) {
 	if logger == nil {
 		if err != nil {
@@ -82,6 +87,7 @@ func Fatalf(err error, format string, a ...interface{}) {
 	os.Exit(1)
 }
 
+// Dprintf prints verbose output only if debug mode is enabled
 func Dprintf(format string, a ...interface{}) {
 	if DebugMode {
 		if logger == nil {
@@ -92,6 +98,7 @@ func Dprintf(format string, a ...interface{}) {
 	}
 }
 
+// Exec executes a system command and redirects the commands output to debug
 func Exec(path string, args ...string) error {
 	cmd := exec.Command(path, args...)
 
