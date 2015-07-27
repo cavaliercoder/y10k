@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -36,7 +35,7 @@ func strToBool(s string) (bool, error) {
 		return false, nil
 	}
 
-	return false, errors.New(fmt.Sprintf("Invalid boolean value: %s", s))
+	return false, Errorf("Invalid boolean value: %s", s)
 }
 
 // LoadYumfile loads a Yumfile from a json formated file
@@ -71,6 +70,8 @@ func LoadYumfile(path string) (*Yumfile, error) {
 
 			// create new mirror def
 			mirror = &YumRepoMirror{
+				YumfilePath:   path,
+				YumfileLineNo: n,
 				YumRepo: YumRepo{
 					ID: id,
 				},
@@ -87,7 +88,7 @@ func LoadYumfile(path string) (*Yumfile, error) {
 					yumfile.LocalPathPrefix = val
 
 				default:
-					return nil, errors.New(fmt.Sprintf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key))
+					return nil, Errorf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key)
 				}
 			} else {
 				// add key/val to current mirror
@@ -100,20 +101,22 @@ func LoadYumfile(path string) (*Yumfile, error) {
 					mirror.YumRepo.BaseURL = val
 				case "localpath":
 					mirror.LocalPath = val
+				case "arch":
+					mirror.Architecture = val
 				case "newonly":
 					if b, err := strToBool(val); err != nil {
-						return nil, errors.New(fmt.Sprintf("Syntax error in Yumfile on line %d: %s", n, err.Error()))
+						return nil, Errorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
 					} else {
 						mirror.NewOnly = b
 					}
 				default:
-					return nil, errors.New(fmt.Sprintf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key))
+					return nil, Errorf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key)
 				}
 			}
 		} else if commentPattern.MatchString(s) {
 			// ignore line
 		} else {
-			return nil, errors.New(fmt.Sprintf("Syntax error in Yumfile on line %d: %s", n, s))
+			return nil, Errorf("Syntax error in Yumfile on line %d: %s", n, s)
 		}
 	}
 

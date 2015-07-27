@@ -3,7 +3,7 @@
 *Simplified Yum repository management from the year 10,000 AD*
 
 Y10K is a tool to deploy Yum/RPM repositories and mirrors in your local
-environment using settings described in a JSON formatted `Yumfile`.
+environment using settings described in a INI formatted `Yumfile`.
 
 Y10K is inspired by tools such as Puppet's [R10K](https://github.com/puppetlabs/r10k)
 and Ruby's [Bundler](http://bundler.io/gemfile.html).

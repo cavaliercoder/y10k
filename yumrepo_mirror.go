@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,17 +28,18 @@ type YumRepoMirror struct {
 	NewOnly        bool    `json:"newOnly,omitempty"`
 	DeleteRemoved  bool    `json:"deleteRemoved,omitempty"`
 	GPGCheck       bool    `json:"gpgCheck,omitempty"`
+	Architecture   string  `json:"arch,omitempty"`
+	YumfilePath    string  `json:"-"`
+	YumfileLineNo  int     `json:"_"`
 }
 
 func (c *YumRepoMirror) Validate() error {
-	// TODO validate mirror fields before processing
-
 	if c.YumRepo.ID == "" {
-		return errors.New("Upstream repository has no ID specified")
+		return Errorf("Upstream repository has no ID specified (in %s:%d)", c.YumfilePath, c.YumfileLineNo)
 	}
 
 	if c.YumRepo.MirrorListURL == "" && c.YumRepo.BaseURL == "" {
-		return errors.New("Upstream repository has no mirror list or base URL")
+		return Errorf("Upstream repository for '%s' has no mirror list or base URL (in %s:%d)", c.YumRepo.ID, c.YumfilePath, c.YumfileLineNo)
 	}
 
 	return nil
@@ -132,6 +132,10 @@ func (c *YumRepoMirror) Sync() error {
 
 	if c.GPGCheck {
 		args = append(args, "--gpgcheck")
+	}
+
+	if c.Architecture != "" {
+		args = append(args, fmt.Sprint("--arch=%s", c.Architecture))
 	}
 
 	if c.LocalPath != "" {

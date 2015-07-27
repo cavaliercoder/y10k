@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"github.com/codegangsta/cli"
 	"os"
@@ -143,6 +144,10 @@ func Dprintf(format string, a ...interface{}) {
 	if DebugMode {
 		fmt.Fprintf(os.Stderr, fmt.Sprintf("DEBUG: %s", format), a...)
 	}
+}
+
+func Errorf(format string, a ...interface{}) error {
+	return errors.New(fmt.Sprintf(format, a...))
 }
 
 func Exec(path string, args ...string) error {
