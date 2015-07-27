@@ -97,19 +97,16 @@ func (c *YumRepoMirror) installRepoFile() error {
 	return nil
 }
 
-func (c *YumRepoMirror) deleteRepoFile() error {
-	repoFilePath := c.repoFilePath()
-	Dprintf("Deleting repo file: %s\n", repoFilePath)
-	return os.Remove(repoFilePath)
-}
-
 func (c *YumRepoMirror) Sync() error {
+	// cleanup orphaned files now and at the end
+	cleanUpTempFiles()
+	defer cleanUpTempFiles()
+
 	// create repo file
 	err := c.installRepoFile()
 	if err != nil {
 		return err
 	}
-	defer c.deleteRepoFile()
 
 	Printf("Syncronizing repo: %s\n", c.YumRepo.ID)
 

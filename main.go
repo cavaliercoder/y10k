@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"github.com/codegangsta/cli"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 var (
@@ -94,6 +96,19 @@ func main() {
 	}
 
 	app.Run(os.Args)
+}
+
+func cleanUpTempFiles() {
+	filepath.Walk(repoFileDir, cleanUpTempFile)
+}
+
+func cleanUpTempFile(path string, f os.FileInfo, err error) error {
+	if strings.HasPrefix(f.Name(), repoFilePrefix) && strings.HasSuffix(f.Name(), repoFileSuffix) {
+		Dprintf("Deleting repo file: %s\n", path)
+		os.Remove(path)
+	}
+
+	return nil
 }
 
 // ActionYumfileValidate processes the 'yumfile validate' command
