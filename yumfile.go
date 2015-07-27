@@ -143,6 +143,8 @@ func (c *Yumfile) Validate() error {
 		if c.LocalPathPrefix != "" {
 			c.YumRepos[i].LocalPath = fmt.Sprintf("%s/%s", c.LocalPathPrefix, mirror.LocalPath)
 		}
+
+		// TODO: Prevent duplicate local paths and repo IDs
 	}
 
 	return nil

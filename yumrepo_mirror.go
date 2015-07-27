@@ -149,7 +149,7 @@ func (c *YumRepoMirror) Sync() error {
 	}
 
 	if c.Architecture != "" {
-		args = append(args, fmt.Sprint("--arch=%s", c.Architecture))
+		args = append(args, fmt.Sprintf("--arch=%s", c.Architecture))
 	}
 
 	if c.LocalPath != "" {
