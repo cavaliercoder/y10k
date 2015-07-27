@@ -8,6 +8,56 @@ environment using settings described in a INI formatted `Yumfile`.
 Y10K is inspired by tools such as Puppet's [R10K](https://github.com/puppetlabs/r10k)
 and Ruby's [Bundler](http://bundler.io/gemfile.html).
 
+## Usage
+
+```
+NAME:
+   y10k - simplied yum mirror management
+
+USAGE:
+   y10k [global options] command [command options] [arguments...]
+   
+VERSION:
+   0.1.0
+   
+COMMANDS:
+   yumfile	work with a Yumfile
+   version	print the version of y10k
+   help, h	Shows a list of commands or help for one command
+   
+GLOBAL OPTIONS:
+   --logfile, -l 	redirect output to a log file [$Y10K_LOGFILE]
+   --debug, -d		print debug output [$Y10K_DEBUG]
+   --help, -h		show help
+   --version, -v	print the version
+
+```
+
+## Yumfile format
+
+```ini
+#
+# Global settings
+#
+pathprefix=/var/www/html/pub
+
+#
+# CentOS 7 x86_64 mirror
+#
+[centos-7-x86_64-base]
+name=CentOS 7 x86_64 Base
+mirrorlist=http://mirrorlist.centos.orgbroken/?release=7&arch=x86_64&repo=os
+localpath=centos/7/os/x86_64
+arch=x86_64
+
+[centos-7-x86_64-updates]
+name=CentOS 7 x86_64 Updates
+mirrorlist=http://mirrorlist.centos.org/?release=7&arch=x86_64&repo=updates
+localpath=centos/7/updates/x86_64
+arch=x86_64
+
+```  
+
 ## License
 
 Y10K Copyright (C) 2014 Ryan Armstrong (ryan@cavaliercoder.com)
