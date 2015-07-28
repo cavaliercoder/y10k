@@ -49,6 +49,11 @@ func (c *YumRepoMirror) Validate() error {
 		return NewErrorf("Upstream repository for '%s' has no mirror list or base URL (in %s:%d)", c.YumRepo.ID, c.YumfilePath, c.YumfileLineNo)
 	}
 
+	// default to ID if name not set
+	if c.YumRepo.Name == "" {
+		c.YumRepo.Name = c.YumRepo.ID
+	}
+
 	return nil
 }
 
