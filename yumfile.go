@@ -119,6 +119,11 @@ func LoadYumfile(path string) (*Yumfile, error) {
 		}
 	}
 
+	// add last scanned mirror
+	if mirror != nil {
+		yumfile.YumRepos = append(yumfile.YumRepos, *mirror)
+	}
+
 	// check for scan errors
 	if err := scanner.Err(); err != nil {
 		return nil, err
