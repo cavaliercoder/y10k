@@ -135,6 +135,8 @@ func (c *YumRepoMirror) Sync() error {
 		fmt.Sprintf("--repoid=%s%s", repoPrefix, c.YumRepo.ID),
 		"--norepopath",
 		"--quiet", // unfortunately reposync uses lots of control chars...
+		"--downloadcomps",
+		"--download-metadata",
 	}
 
 	if c.NewOnly {
