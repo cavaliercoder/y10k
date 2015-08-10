@@ -1,6 +1,6 @@
 APP = y10k
 APPVER = 0.1.0
-ARCH = $(shell uname -i)
+ARCH = $(shell uname -m)
 PACKAGE = $(APP)-$(APPVER).$(ARCH)
 TARBALL = $(PACKAGE).tar.gz
 
@@ -9,12 +9,14 @@ GFLAGS = -x
 RM = rm -f
 TAR = tar
 
-.PHONY: all tar clean
 
 all: $(APP)
 
 $(APP): main.go health.go yumfile.go yumrepo.go yumrepo_mirror.go io.go
-	$(GO) build -o $(APP) $(GFLAGS)
+	$(GO) build -x -o $(APP) $(GFLAGS)
+
+get-deps:
+	$(GO) get -u github.com/codegangsta/cli
 
 tar: $(APP) README.md
 	mkdir $(PACKAGE)
@@ -25,3 +27,5 @@ tar: $(APP) README.md
 clean:
 	$(GO) clean
 	$(RM) -f $(APP) $(TARBALL)
+
+.PHONY: all get-deps tar clean

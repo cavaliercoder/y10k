@@ -2,3 +2,4 @@
 y10k
 *.log
 *.tar.gz
+.sass-cache/
