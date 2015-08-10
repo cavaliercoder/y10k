@@ -26,6 +26,15 @@ and Ruby's [Bundler](http://bundler.io/gemfile.html).
  * [Usage]({{ site.baseurl }}/usage/) - invoke y10k commands
  * [Yumfile format]({{ site.baseurl }}/yumfile/) - write a Yumfile
 
+## Installation
+
+Precompiled binaries are available for [download on SourceForge](https://sourceforge.net/projects/y10k/files/latest/download).
+
+Alternatively, you can build y10k yourself with:
+
+	go get github.com/cavaliercoder/y10k
+
+
 ## License
 
 Y10K Copyright (C) 2014 Ryan Armstrong (ryan@cavaliercoder.com)
