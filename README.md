@@ -18,6 +18,9 @@ and Ruby's [Bundler](http://bundler.io/gemfile.html).
 
 Hey cool there's [documentation](http://cavaliercoder.github.io/y10k).
 
+Oh, and you can [Download y10k](https://sourceforge.net/projects/y10k/files/latest/download)
+precompiled binaries.
+
 ## Usage
 
 ```
