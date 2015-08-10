@@ -1,0 +1,26 @@
+# Site settings
+title: y10k
+email: ryan@cavaliercoder.com
+summary: Simplified Yum repository management from the year 10,000 AD
+description: > 
+  Y10K is a tool to deploy Yum/RPM repositories and mirrors in your local
+  environment using settings described in a INI formatted `Yumfile`.
+baseurl: "/y10k" # the subpath of your site, e.g. /blog/
+url: "http://cavaliercoder.github.io" # the base hostname & protocol for your site
+twitter_username: cavaliercoder
+github_username:  cavaliercoder
+
+# Build settings
+markdown: kramdown
+
+defaults:
+  -
+    scope:
+      path: ""
+      type: "pages"
+    values:
+      layout: "default"
+
+collections:
+  docs:
+    output: true
