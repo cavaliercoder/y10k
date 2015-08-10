@@ -16,6 +16,8 @@ a database, server, agents, configure channel registrations, etc. etc.
 Y10K is inspired by tools such as Puppet's [R10K](https://github.com/puppetlabs/r10k)
 and Ruby's [Bundler](http://bundler.io/gemfile.html).
 
+Hey cool there's [documentation](http://cavaliercoder.github.io/y10k).
+
 ## Usage
 
 ```

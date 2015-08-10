@@ -24,6 +24,8 @@ func main() {
 	app := cli.NewApp()
 	app.Name = "y10k"
 	app.Version = "0.1.0"
+	app.Author = "Ryan Armstrong"
+	app.Email = "ryan@cavaliercoder.com"
 	app.Usage = "simplied yum mirror management"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
@@ -89,9 +91,9 @@ func main() {
 		InitLogFile()
 
 		// check system health
-		if err := HealthCheck(); err != nil {
-			Fatalf(err, "Health check failed")
-		}
+		// if err := HealthCheck(); err != nil {
+		//	   Fatalf(err, "Health check failed")
+		// }
 
 		return nil
 	}
