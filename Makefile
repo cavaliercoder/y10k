@@ -5,15 +5,13 @@ PACKAGE = $(APP)-$(APPVER).$(ARCH)
 TARBALL = $(PACKAGE).tar.gz
 
 GO = go
-GFLAGS = -x
 RM = rm -f
 TAR = tar
-
 
 all: $(APP)
 
 $(APP): main.go health.go yumfile.go yumrepo.go yumrepo_mirror.go io.go
-	$(GO) build -x -o $(APP) $(GFLAGS)
+	$(GO) build -x -o $(APP)
 
 get-deps:
 	$(GO) get -u github.com/codegangsta/cli

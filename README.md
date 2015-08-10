@@ -1,8 +1,8 @@
-# Y10K
+# y10k [![Build Status](https://travis-ci.org/cavaliercoder/y10k.svg?branch=master)](https://travis-ci.org/cavaliercoder/y10k) [![Download y10k](https://img.shields.io/sourceforge/dm/y10k.svg)](https://sourceforge.net/projects/y10k/files/latest/download)
 
 *Simplified Yum repository management from the year 10,000 AD*
 
-Y10K is a tool to deploy Yum/RPM repositories and mirrors in your local
+y10k is a tool to deploy Yum/RPM repositories and mirrors in your local
 environment using settings described in a INI formatted `Yumfile`.
 
 It is a wrapper for `reposync` and `createrepo` but takes the hard work out of
@@ -13,7 +13,7 @@ What about Pulp/Satellite/Other? I wanted a cron job that syncronizes my repos
 with the upstreams into a folder shared in Apache/nginx. I don't want to deploy
 a database, server, agents, configure channel registrations, etc. etc.
 
-Y10K is inspired by tools such as Puppet's [R10K](https://github.com/puppetlabs/r10k)
+y10k is inspired by tools such as Puppet's [R10K](https://github.com/puppetlabs/r10k)
 and Ruby's [Bundler](http://bundler.io/gemfile.html).
 
 Hey cool there's [documentation](http://cavaliercoder.github.io/y10k).
