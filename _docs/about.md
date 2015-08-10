@@ -1,6 +1,6 @@
 ---
 layout: page
-title: y10k
+title: About
 menu: About
 permalink: /
 ---
@@ -21,6 +21,10 @@ a database, server, agents, configure channel registrations, etc. etc.
 Y10K is inspired by tools such as Puppet's [R10K](https://github.com/puppetlabs/r10k)
 and Ruby's [Bundler](http://bundler.io/gemfile.html).
 
+## Documentation
+
+ * [Usage]({{ site.baseurl }}/usage/) - invoke y10k commands
+ * [Yumfile format]({{ site.baseurl }}/yumfile/) - write a Yumfile
 
 ## License
 

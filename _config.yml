@@ -7,6 +7,7 @@ description: >
   environment using settings described in a INI formatted `Yumfile`.
 baseurl: "/y10k" # the subpath of your site, e.g. /blog/
 url: "http://cavaliercoder.github.io" # the base hostname & protocol for your site
+repository: https://github.com/cavaliercoder/y10k
 twitter_username: cavaliercoder
 github_username:  cavaliercoder
 
