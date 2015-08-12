@@ -25,7 +25,7 @@ precompiled binaries.
 
 ```
 NAME:
-   y10k - simplied yum mirror management
+   y10k - simplified yum mirror management
 
 USAGE:
    y10k [global options] command [command options] [arguments...]
