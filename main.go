@@ -26,7 +26,7 @@ func main() {
 	app.Version = "0.1.0"
 	app.Author = "Ryan Armstrong"
 	app.Email = "ryan@cavaliercoder.com"
-	app.Usage = "simplied yum mirror management"
+	app.Usage = "simplified yum mirror management"
 	app.Flags = []cli.Flag{
 		cli.StringFlag{
 			Name:   "logfile, l",
