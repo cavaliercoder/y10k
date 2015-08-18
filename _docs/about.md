@@ -32,7 +32,7 @@ Precompiled binaries are available for [download on SourceForge](https://sourcef
 
 Alternatively, you can build y10k yourself with:
 
-	go get github.com/cavaliercoder/y10k
+	$ go get github.com/cavaliercoder/y10k
 
 
 ## License

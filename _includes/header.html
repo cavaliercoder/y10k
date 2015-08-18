@@ -14,8 +14,10 @@
       </a>
 
       <div class="trigger">
+        <a class="page-link" href="https://sourceforge.net/projects/y10k/files/latest/download">Download</a>
+        <a class="page-link" href="https://github.com/cavaliercoder/y10k">Sources</a>
         {% for menu in site.data.menu %}
-          <a class="page-link" href="{{ menu.link | prepend: site.baseurl }}">{{ menu.title }}</a>
+        <a class="page-link" href="{{ menu.link | prepend: site.baseurl }}">{{ menu.title }}</a>
         {% endfor %}
       </div>
     </nav>
