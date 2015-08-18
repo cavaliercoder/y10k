@@ -28,9 +28,17 @@ and Ruby's [Bundler](http://bundler.io/gemfile.html).
 
 ## Installation
 
-Precompiled binaries are available for [download on SourceForge](https://sourceforge.net/projects/y10k/files/latest/download).
+On RedHat family systems, you'll need to install `yum-utils` and `createrepo`
+first.
 
-Alternatively, you can build y10k yourself with:
+    $ yum install yum-utils createrepo
+
+
+Precompiled y10k binaries are available for
+[download on SourceForge](https://sourceforge.net/projects/y10k/files/latest/download).
+
+Alternatively, you can build y10k yourself once you have
+[installed Go](https://golang.org/doc/install) with:
 
     $ go get github.com/cavaliercoder/y10k
 
