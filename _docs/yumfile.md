@@ -70,17 +70,15 @@ configure `reposync` and `createrepo`:
  * `localpath` - local path where the upstream respository will be syncronized
    to. Defaults to the ID specified in the repository section header
  
- * `arch` - syncronize only the specified machine architecture. Passed to the
-   `--arch` argument of `reposync`
+ * `arch` - syncronize only the specified machine architecture (as per 
+   `uname -m`)
 
- * `newonly` (0 or 1) - syncronize only the most recent version of upstream packages.
-   Passed as the `--newest-only` argument to `reposync`
+ * `newonly` (0 or 1) - syncronize only the most recent version of upstream
+   packages
 
- * `sources` (0 or 1) - download source RPMs in addition to compiled packages.
-   Passed as the `--source` argument to `reposync`
+ * `sources` (0 or 1) - download source RPMs in addition to compiled packages
 
  * `deleteremoved` (0 or 1) - delete local packages that have been removed from
-   the upstream repository. Passed as the `--delete` argument to `reposync`
+   the upstream repository
 
- * `gpgcheck` (0 or 1) - delete local packages that file GPG signature check.
-   Passed as the `--gpgcheck` argument to `reposync`
+ * `gpgcheck` (0 or 1) - delete local packages that fail GPG signature check.
