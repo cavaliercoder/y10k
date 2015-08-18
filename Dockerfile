@@ -14,6 +14,6 @@ RUN yum install -y \
 
 RUN mkdir /root/gocode /usr/src/y10k
 
-ENV GOPATH=/root/gocode
+ENV GOPATH=/root/gocode PATH=$PATH:/root/gocode/bin
 
 CMD cd /usr/src/y10k; /bin/bash
