@@ -40,6 +40,7 @@ COMMANDS:
    
 GLOBAL OPTIONS:
    --logfile, -l 	redirect output to a log file [$Y10K_LOGFILE]
+   --quiet, -q    output less
    --debug, -d		print debug output [$Y10K_DEBUG]
    --help, -h		show help
    --version, -v	print the version

@@ -9,7 +9,12 @@ import (
 	"strings"
 )
 
-const confFile = "/tmp/y10k.conf"
+const (
+	y10kTmpPath  = "/tmp/y10k"
+	yumConfPath  = "/tmp/y10k/yum.conf"
+	yumLogfile   = "/tmp/y10k/yum.log"
+	yumCachePath = "/tmp/y10k/cache"
+)
 
 type Yumfile struct {
 	Repos           []Repo
@@ -27,7 +32,7 @@ var (
 	commentPattern     = regexp.MustCompile("(^$)|(^\\s+$)|(^#)|(^;)")
 )
 
-// LoadYumfile loads a Yumfile from a json formated file
+// LoadYumfile loads a Yumfile from disk
 func LoadYumfile(path string) (*Yumfile, error) {
 	Dprintf("Loading Yumfile: %s\n", path)
 
@@ -176,26 +181,37 @@ func (c *Yumfile) SyncAll() error {
 
 // Sync processes all repository mirrors defined in a Yumfile
 func (c *Yumfile) Sync(repos []Repo) error {
-	c.installYumConf(repos)
+	//if err := c.installYumConf(repos); err != nil {
+	//	return err
+	//}
 
 	for _, repo := range repos {
-		// TODO: prevent break on error
-		if err := c.reposync(&repo); err != nil {
-			return err
-		}
-
-		if err := c.createrepo(&repo); err != nil {
-			return err
+		if err := c.installYumConf(&repo); err != nil {
+			Errorf(err, "Failed to create yum.conf for %s", repo.ID)
+		} else {
+			if err := c.reposync(&repo); err != nil {
+				Errorf(err, "Failed to download updates for %s", repo.ID)
+			} else {
+				if err := c.createrepo(&repo); err != nil {
+					Errorf(err, "Failed to update repo database for %s", repo.ID)
+				}
+			}
 		}
 	}
 
 	return nil
 }
 
-func (c *Yumfile) installYumConf(repos []Repo) error {
-	Dprintf("Installing yum.conf file: %s\n", confFile)
+func (c *Yumfile) installYumConf(repo *Repo) error {
+	Dprintf("Installing yum.conf file: %s\n", yumConfPath)
 
-	f, err := os.Create(confFile)
+	// create temp path
+	if err := os.MkdirAll(y10kTmpPath, 0750); err != nil {
+		return err
+	}
+
+	// create config file
+	f, err := os.Create(yumConfPath)
 	if err != nil {
 		return err
 	}
@@ -203,25 +219,24 @@ func (c *Yumfile) installYumConf(repos []Repo) error {
 
 	// global yum conf
 	fmt.Fprintf(f, "[main]\n")
-	fmt.Fprintf(f, "cachedir=/var/cache/yum/$basearch/$releasever\n")
-	fmt.Fprintf(f, "keepcache=0\n")
+	fmt.Fprintf(f, "cachedir=%s\n", yumCachePath)
 	fmt.Fprintf(f, "debuglevel=10\n")
-	fmt.Fprintf(f, "logfile=/tmp/y10k-yum.log\n")
 	fmt.Fprintf(f, "exactarch=0\n")
 	fmt.Fprintf(f, "gpgcheck=0\n")
+	fmt.Fprintf(f, "keepcache=0\n")
+	fmt.Fprintf(f, "logfile=%s\n", yumLogfile)
 	fmt.Fprintf(f, "plugins=0\n")
-	fmt.Fprintf(f, "rpmverbosity=debug\n")
 	fmt.Fprintf(f, "reposdir=\n")
+	fmt.Fprintf(f, "rpmverbosity=debug\n")
+	fmt.Fprintf(f, "timeout=5\n")
 	fmt.Fprintf(f, "\n")
 
-	// append repos
-	for _, repo := range repos {
-		fmt.Fprintf(f, "[%s]\n", repo.ID)
-		for key, val := range repo.Parameters {
-			fmt.Fprintf(f, "%s=%s\n", key, val)
-		}
-		fmt.Fprintf(f, "\n")
+	// append repo config
+	fmt.Fprintf(f, "[%s]\n", repo.ID)
+	for key, val := range repo.Parameters {
+		fmt.Fprintf(f, "%s=%s\n", key, val)
 	}
+	fmt.Fprintf(f, "\n")
 
 	return nil
 }
@@ -231,12 +246,11 @@ func (c *Yumfile) reposync(repo *Repo) error {
 
 	// compute args for reposync command
 	args := []string{
-		fmt.Sprintf("--config=%s", confFile),
+		fmt.Sprintf("--config=%s", yumConfPath),
 		fmt.Sprintf("--repoid=%s", repo.ID),
 		"--norepopath",
 		"--downloadcomps",
 		"--download-metadata",
-		"--tempcache",
 	}
 
 	if QuietMode {
@@ -292,12 +306,11 @@ func (c *Yumfile) createrepo(repo *Repo) error {
 		args = append(args, "--quiet")
 	} else {
 		args = append(args, "--profile")
-
 	}
 
 	// debug switches
 	if DebugMode {
-		args = append(args, "--verbose", "--profile")
+		args = append(args, "--verbose")
 	}
 
 	// path to create repo for

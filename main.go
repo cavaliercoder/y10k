@@ -132,7 +132,7 @@ func ActionYumfileList(context *cli.Context) {
 	repoCount := len(yumfile.Repos)
 	padding := (len(fmt.Sprintf("%d", repoCount)) * 2) + 1
 	for i, repo := range yumfile.Repos {
-		Printf("%*s %s\n", padding, fmt.Sprintf("%d/%d", i+1, repoCount), repo.ID)
+		Printf("%*s %s -> %s\n", padding, fmt.Sprintf("%d/%d", i+1, repoCount), repo.ID, repo.LocalPath)
 	}
 }
 
