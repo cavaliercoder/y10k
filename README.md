@@ -1,4 +1,4 @@
-# y10k [![Build Status](https://travis-ci.org/cavaliercoder/y10k.svg?branch=master)](https://travis-ci.org/cavaliercoder/y10k) [![Download y10k](https://img.shields.io/sourceforge/dm/y10k.svg)](https://sourceforge.net/projects/y10k/files/latest/download)
+# y10k [![Build Status](https://travis-ci.org/cavaliercoder/y10k.svg?branch=master)](https://travis-ci.org/cavaliercoder/y10k)
 
 *Simplified Yum repository management from the year 10,000 AD*
 
@@ -18,7 +18,7 @@ and Ruby's [Bundler](http://bundler.io/gemfile.html).
 
 Hey cool there's [documentation](http://cavaliercoder.github.io/y10k).
 
-Oh, and you can [Download y10k](https://sourceforge.net/projects/y10k/files/latest/download)
+Oh, and you can [download y10k](https://sourceforge.net/projects/y10k/files/latest/download)
 precompiled binaries.
 
 ## Usage

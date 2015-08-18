@@ -5,11 +5,14 @@ import (
 	"fmt"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 )
 
+const confFile = "/tmp/y10k.conf"
+
 type Yumfile struct {
-	YumRepos        []YumRepoMirror
+	Repos           []Repo
 	LocalPathPrefix string
 }
 
@@ -24,20 +27,6 @@ var (
 	commentPattern     = regexp.MustCompile("(^$)|(^\\s+$)|(^#)|(^;)")
 )
 
-func strToBool(s string) (bool, error) {
-	lc := strings.ToLower(s)
-
-	switch lc {
-	case "1", "true", "enabled", "yes":
-		return true, nil
-
-	case "0", "false", "disabled", "no":
-		return false, nil
-	}
-
-	return false, NewErrorf("Invalid boolean value: %s", s)
-}
-
 // LoadYumfile loads a Yumfile from a json formated file
 func LoadYumfile(path string) (*Yumfile, error) {
 	Dprintf("Loading Yumfile: %s\n", path)
@@ -45,7 +34,6 @@ func LoadYumfile(path string) (*Yumfile, error) {
 	yumfile := Yumfile{}
 
 	// open file
-	// TODO: Add support for 'includes' statements in Yumfiles
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -55,7 +43,7 @@ func LoadYumfile(path string) (*Yumfile, error) {
 	// read each line
 	n := 0
 	scanner := bufio.NewScanner(f)
-	var mirror *YumRepoMirror = nil
+	var repo *Repo = nil
 	for scanner.Scan() {
 		n++
 		s := scanner.Text()
@@ -65,22 +53,22 @@ func LoadYumfile(path string) (*Yumfile, error) {
 			id := matches[0][1]
 
 			// append previous section
-			if mirror != nil {
-				yumfile.YumRepos = append(yumfile.YumRepos, *mirror)
+			if repo != nil {
+				yumfile.Repos = append(yumfile.Repos, *repo)
 			}
 
-			// create new mirror def
-			mirror = NewYumRepoMirror()
+			// create new repo def
+			repo = NewRepo()
 
-			mirror.YumfilePath = path
-			mirror.YumfileLineNo = n
-			mirror.YumRepo.ID = id
+			repo.YumfilePath = path
+			repo.YumfileLineNo = n
+			repo.ID = id
 		} else if matches := keyValPattern.FindAllStringSubmatch(s, -1); len(matches) > 0 {
 			// line is a key=val pair
 			key := matches[0][1]
 			val := matches[0][2]
 
-			if mirror == nil {
+			if repo == nil {
 				// global key/val pair
 				switch key {
 				case "pathprefix":
@@ -90,26 +78,43 @@ func LoadYumfile(path string) (*Yumfile, error) {
 					return nil, NewErrorf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key)
 				}
 			} else {
-				// add key/val to current mirror
+				// add key/val to current repo
 				switch key {
-				case "name":
-					mirror.YumRepo.Name = val
-				case "mirrorlist":
-					mirror.YumRepo.MirrorListURL = val
-				case "baseurl":
-					mirror.YumRepo.BaseURL = val
 				case "localpath":
-					mirror.LocalPath = val
+					repo.LocalPath = val
 				case "arch":
-					mirror.Architecture = val
+					repo.Architecture = val
 				case "newonly":
 					if b, err := strToBool(val); err != nil {
 						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
 					} else {
-						mirror.NewOnly = b
+						repo.NewOnly = b
 					}
+				case "sources":
+					if b, err := strToBool(val); err != nil {
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
+					} else {
+						repo.IncludeSources = b
+					}
+				case "deleteremoved":
+					if b, err := strToBool(val); err != nil {
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
+					} else {
+						repo.DeleteRemoved = b
+					}
+
+				case "gpgcheck":
+					if b, err := strToBool(val); err != nil {
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
+					} else {
+						repo.GPGCheck = b
+
+						// pass through to yum
+						repo.Parameters[key] = val
+					}
+
 				default:
-					return nil, NewErrorf("Syntax error in Yumfile on line %d: Unknown key: %s", n, key)
+					repo.Parameters[key] = val
 				}
 			}
 		} else if commentPattern.MatchString(s) {
@@ -119,9 +124,9 @@ func LoadYumfile(path string) (*Yumfile, error) {
 		}
 	}
 
-	// add last scanned mirror
-	if mirror != nil {
-		yumfile.YumRepos = append(yumfile.YumRepos, *mirror)
+	// add last scanned repo
+	if repo != nil {
+		yumfile.Repos = append(yumfile.Repos, *repo)
 	}
 
 	// check for scan errors
@@ -139,14 +144,14 @@ func LoadYumfile(path string) (*Yumfile, error) {
 
 // Validate ensures all Yumfile fields contain valid values
 func (c *Yumfile) Validate() error {
-	for i, mirror := range c.YumRepos {
-		if err := mirror.Validate(); err != nil {
+	for i, repo := range c.Repos {
+		if err := repo.Validate(); err != nil {
 			return err
 		}
 
-		// append path prefix to each mirror
+		// append path prefix to each repo
 		if c.LocalPathPrefix != "" {
-			c.YumRepos[i].LocalPath = fmt.Sprintf("%s/%s", c.LocalPathPrefix, mirror.LocalPath)
+			c.Repos[i].LocalPath = fmt.Sprintf("%s/%s", c.LocalPathPrefix, repo.LocalPath)
 		}
 
 		// TODO: Prevent duplicate local paths and repo IDs
@@ -155,38 +160,171 @@ func (c *Yumfile) Validate() error {
 	return nil
 }
 
-func (c *Yumfile) Repo(id string) *YumRepoMirror {
-	for _, mirror := range c.YumRepos {
-		if mirror.YumRepo.ID == id {
-			return &mirror
+func (c *Yumfile) GetRepoByID(id string) *Repo {
+	for _, repo := range c.Repos {
+		if repo.ID == id {
+			return &repo
 		}
 	}
 
 	return nil
 }
 
+func (c *Yumfile) SyncAll() error {
+	return c.Sync(c.Repos)
+}
+
 // Sync processes all repository mirrors defined in a Yumfile
-func (c *Yumfile) Sync(breakOnError bool) error {
-	// sync each repo
-	for _, mirror := range c.YumRepos {
-		// sync packages
-		if err := mirror.Sync(); err != nil {
-			if breakOnError {
-				return err
-			} else {
-				Errorf(err, "Error syncronizing repo '%s", mirror.YumRepo.ID)
-			}
-		} else {
-			// update database
-			if err := mirror.Update(); err != nil {
-				if breakOnError {
-					return err
-				} else {
-					Errorf(err, "Error updating database for repo '%s'", mirror.YumRepo.ID)
-				}
-			}
+func (c *Yumfile) Sync(repos []Repo) error {
+	c.installYumConf(repos)
+
+	for _, repo := range repos {
+		// TODO: prevent break on error
+		if err := c.reposync(&repo); err != nil {
+			return err
+		}
+
+		if err := c.createrepo(&repo); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+func (c *Yumfile) installYumConf(repos []Repo) error {
+	Dprintf("Installing yum.conf file: %s\n", confFile)
+
+	f, err := os.Create(confFile)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	// global yum conf
+	fmt.Fprintf(f, "[main]\n")
+	fmt.Fprintf(f, "cachedir=/var/cache/yum/$basearch/$releasever\n")
+	fmt.Fprintf(f, "keepcache=0\n")
+	fmt.Fprintf(f, "debuglevel=10\n")
+	fmt.Fprintf(f, "logfile=/tmp/y10k-yum.log\n")
+	fmt.Fprintf(f, "exactarch=0\n")
+	fmt.Fprintf(f, "gpgcheck=0\n")
+	fmt.Fprintf(f, "plugins=0\n")
+	fmt.Fprintf(f, "rpmverbosity=debug\n")
+	fmt.Fprintf(f, "reposdir=\n")
+	fmt.Fprintf(f, "\n")
+
+	// append repos
+	for _, repo := range repos {
+		fmt.Fprintf(f, "[%s]\n", repo.ID)
+		for key, val := range repo.Parameters {
+			fmt.Fprintf(f, "%s=%s\n", key, val)
+		}
+		fmt.Fprintf(f, "\n")
+	}
+
+	return nil
+}
+
+func (c *Yumfile) reposync(repo *Repo) error {
+	Printf("Syncronizing repo: %s\n", repo.ID)
+
+	// compute args for reposync command
+	args := []string{
+		fmt.Sprintf("--config=%s", confFile),
+		fmt.Sprintf("--repoid=%s", repo.ID),
+		"--norepopath",
+		"--downloadcomps",
+		"--download-metadata",
+		"--tempcache",
+	}
+
+	if QuietMode {
+		args = append(args, "--quiet")
+	}
+
+	if repo.NewOnly {
+		args = append(args, "--newest-only")
+	}
+
+	if repo.IncludeSources {
+		args = append(args, "--source")
+	}
+
+	if repo.DeleteRemoved {
+		args = append(args, "--delete")
+	}
+
+	if repo.GPGCheck {
+		args = append(args, "--gpgcheck")
+	}
+
+	if repo.Architecture != "" {
+		args = append(args, fmt.Sprintf("--arch=%s", repo.Architecture))
+	}
+
+	if repo.LocalPath != "" {
+		args = append(args, fmt.Sprintf("--download_path=%s", repo.LocalPath))
+	} else {
+		args = append(args, fmt.Sprintf("--download_path=./%s", repo.ID))
+	}
+
+	// execute and capture output
+	if err := Exec("reposync", args...); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (c *Yumfile) createrepo(repo *Repo) error {
+	Printf("Updating repo database: %s\n", repo.ID)
+
+	// compute args for createrepo command
+	args := []string{
+		"--update",
+		"--database",
+		"--checkts",
+		fmt.Sprintf("--workers=%d", runtime.NumCPU()*2),
+	}
+
+	if QuietMode {
+		args = append(args, "--quiet")
+	} else {
+		args = append(args, "--profile")
+
+	}
+
+	// debug switches
+	if DebugMode {
+		args = append(args, "--verbose", "--profile")
+	}
+
+	// path to create repo for
+	if repo.LocalPath != "" {
+		args = append(args, repo.LocalPath)
+	} else {
+		args = append(args, fmt.Sprintf("./%s", repo.ID))
+	}
+
+	// execute and capture output
+	if err := Exec("createrepo", args...); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func strToBool(s string) (bool, error) {
+	lc := strings.ToLower(s)
+
+	switch lc {
+	case "1", "true", "enabled", "yes":
+		return true, nil
+
+	case "0", "false", "disabled", "no":
+		return false, nil
+	}
+
+	return false, NewErrorf("Invalid boolean value: %s", s)
 }

@@ -10,7 +10,7 @@ TAR = tar
 
 all: $(APP)
 
-$(APP): main.go health.go yumfile.go yumrepo.go yumrepo_mirror.go io.go
+$(APP): main.go io.go repo.go yumfile.go
 	$(GO) build -x -o $(APP)
 
 get-deps:
@@ -26,4 +26,7 @@ clean:
 	$(GO) clean
 	$(RM) -f $(APP) $(TARBALL)
 
-.PHONY: all get-deps tar clean
+docker:
+	docker build -t cavaliercoder/y10k .
+
+.PHONY: all get-deps tar clean docker

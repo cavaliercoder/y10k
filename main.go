@@ -6,11 +6,10 @@ import (
 	"github.com/codegangsta/cli"
 	"os"
 	"os/signal"
-	"path/filepath"
-	"strings"
 )
 
 var (
+	QuietMode   = false
 	DebugMode   = false
 	YumfilePath = ""
 	LogFilePath = ""
@@ -32,6 +31,10 @@ func main() {
 			Name:   "logfile, l",
 			Usage:  "redirect output to a log file",
 			EnvVar: "Y10K_LOGFILE",
+		},
+		cli.BoolFlag{
+			Name:  "quiet, q",
+			Usage: "output less",
 		},
 		cli.BoolFlag{
 			Name:   "debug, d",
@@ -84,16 +87,12 @@ func main() {
 
 	app.Before = func(context *cli.Context) error {
 		// set globals from command line context
+		QuietMode = context.GlobalBool("quiet")
 		DebugMode = context.GlobalBool("debug")
 		LogFilePath = context.GlobalString("logfile")
 
 		// configure logging
 		InitLogFile()
-
-		// check system health
-		// if err := HealthCheck(); err != nil {
-		//	   Fatalf(err, "Health check failed")
-		// }
 
 		return nil
 	}
@@ -118,24 +117,11 @@ func main() {
 	app.Run(os.Args)
 }
 
-func cleanUpTempFiles() {
-	filepath.Walk(repoFileDir, cleanUpTempFile)
-}
-
-func cleanUpTempFile(path string, f os.FileInfo, err error) error {
-	if strings.HasPrefix(f.Name(), repoFilePrefix) && strings.HasSuffix(f.Name(), repoFileSuffix) {
-		Dprintf("Deleting repo file: %s\n", path)
-		os.Remove(path)
-	}
-
-	return nil
-}
-
 // ActionYumfileValidate processes the 'yumfile validate' command
 func ActionYumfileValidate(context *cli.Context) {
 	yumfile, err := LoadYumfile(YumfilePath)
 	PanicOn(err)
-	Printf("Yumfile appears valid (%d repos)\n", len(yumfile.YumRepos))
+	Printf("Yumfile appears valid (%d repos)\n", len(yumfile.Repos))
 }
 
 // ActionYumfileList processes the 'yumfile list' command
@@ -143,10 +129,10 @@ func ActionYumfileList(context *cli.Context) {
 	yumfile, err := LoadYumfile(YumfilePath)
 	PanicOn(err)
 
-	repoCount := len(yumfile.YumRepos)
+	repoCount := len(yumfile.Repos)
 	padding := (len(fmt.Sprintf("%d", repoCount)) * 2) + 1
-	for i, repo := range yumfile.YumRepos {
-		Printf("%*s %s\n", padding, fmt.Sprintf("%d/%d", i+1, repoCount), repo.YumRepo.ID)
+	for i, repo := range yumfile.Repos {
+		Printf("%*s %s\n", padding, fmt.Sprintf("%d/%d", i+1, repoCount), repo.ID)
 	}
 }
 
@@ -158,22 +144,18 @@ func ActionYumfileSync(context *cli.Context) {
 	repo := context.Args().First()
 	if repo == "" {
 		// sync/update all repos in Yumfile
-		if err := yumfile.Sync(false); err != nil {
+		if err := yumfile.SyncAll(); err != nil {
 			Fatalf(err, "Error running Yumfile")
 		}
 	} else {
 		// sync/update one repo in the Yumfile
-		mirror := yumfile.Repo(repo)
+		mirror := yumfile.GetRepoByID(repo)
 		if mirror == nil {
 			Fatalf(nil, "No such repo found in Yumfile: %s", repo)
 		}
 
-		if err := mirror.Sync(); err != nil {
-			Fatalf(err, "Error syncronizing repo '%s'", mirror.YumRepo.ID)
-		} else {
-			if err := mirror.Update(); err != nil {
-				Fatalf(err, "Error updating database for repo '%s'", mirror.YumRepo.ID)
-			}
+		if err := yumfile.Sync([]Repo{*mirror}); err != nil {
+			Fatalf(err, "Error syncronizing repo '%s'", mirror.ID)
 		}
 	}
 }
