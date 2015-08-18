@@ -50,17 +50,22 @@ arch=x86_64
 ## Repository options
 
 For every repository you wish to mirror locally, you must define a repository
-configuration section. Each section is delimited with an INI style `[header]`
-which is used as the identifier for the repository in Yum configuration. The ID
-is also used as the local path for the mirror unless the `localpath` directive
-is set.
+configuration section. The supported parameters and syntax are identical to
+`yum.conf` repositories, except for some additional parameters which are unique
+to y10k. These are detailed below.
 
- * `name` - a friendly name for the repository
+Each section is delimited with an INI style `[header]` which is used as the
+identifier for the repository in Yum configuration. The ID is also used as the
+local path for the mirror unless the `localpath` directive is set.
 
- * `mirrorlist` - URL of the upstream repository mirror list. One of
-   `mirrorlist` or `baseurl` must be specified
+All repositories must declare at least one of the following:
+
+ * `mirrorlist` - URL of the upstream repository mirror list
 
  * `baseurl` - URL of the upstream repository
+
+The following directives are unique to a Yumfile repository and are used to
+configure `reposync` and `createrepo`:
 
  * `localpath` - local path where the upstream respository will be syncronized
    to. Defaults to the ID specified in the repository section header
@@ -68,5 +73,14 @@ is set.
  * `arch` - syncronize only the specified machine architecture. Passed to the
    `--arch` argument of `reposync`
 
- * `newonly` - syncronize only the most recent version of upstream packages.
-   Passed to the `--newest-only` argument of `reposync`
+ * `newonly` (0 or 1) - syncronize only the most recent version of upstream packages.
+   Passed as the `--newest-only` argument to `reposync`
+
+ * `sources` (0 or 1) - download source RPMs in addition to compiled packages.
+   Passed as the `--source` argument to `reposync`
+
+ * `deleteremoved` (0 or 1) - delete local packages that have been removed from
+   the upstream repository. Passed as the `--delete` argument to `reposync`
+
+ * `gpgcheck` (0 or 1) - delete local packages that file GPG signature check.
+   Passed as the `--gpgcheck` argument to `reposync`
