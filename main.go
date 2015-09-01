@@ -9,10 +9,14 @@ import (
 )
 
 var (
-	QuietMode   = false
-	DebugMode   = false
-	YumfilePath = ""
-	LogFilePath = ""
+	QuietMode       = false
+	DebugMode       = false
+	YumfilePath     string
+	LogFilePath     string
+	TmpBasePath     string
+	TmpYumConfPath  string
+	TmpYumLogFile   string
+	TmpYumCachePath string
 )
 
 func main() {
@@ -34,12 +38,18 @@ func main() {
 		},
 		cli.BoolFlag{
 			Name:  "quiet, q",
-			Usage: "output less",
+			Usage: "less verbose",
 		},
 		cli.BoolFlag{
 			Name:   "debug, d",
 			Usage:  "print debug output",
 			EnvVar: "Y10K_DEBUG",
+		},
+		cli.StringFlag{
+			Name:   "tmppath, t",
+			Usage:  "path to y10k temporary objects",
+			Value:  "/tmp/y10k",
+			EnvVar: "Y10K_TMPPATH",
 		},
 	}
 
@@ -90,6 +100,11 @@ func main() {
 		QuietMode = context.GlobalBool("quiet")
 		DebugMode = context.GlobalBool("debug")
 		LogFilePath = context.GlobalString("logfile")
+
+		TmpBasePath = context.GlobalString("tmppath")
+		TmpYumConfPath = context.GlobalString("tmppath") + "/" + "yum.conf"
+		TmpYumLogFile = context.GlobalString("tmppath") + "/" + "yum.log"
+		TmpYumCachePath = context.GlobalString("tmppath") + "/" + "cache"
 
 		// configure logging
 		InitLogFile()

@@ -29,21 +29,25 @@ NAME:
 
 USAGE:
    y10k [global options] command [command options] [arguments...]
-   
+
 VERSION:
-   0.1.0
-   
+   0.2.0
+
+AUTHOR(S):
+   Ryan Armstrong <ryan@cavaliercoder.com>
+
 COMMANDS:
    yumfile	work with a Yumfile
    version	print the version of y10k
    help, h	Shows a list of commands or help for one command
-   
+
 GLOBAL OPTIONS:
-   --logfile, -l 	redirect output to a log file [$Y10K_LOGFILE]
-   --quiet, -q    output less
-   --debug, -d		print debug output [$Y10K_DEBUG]
-   --help, -h		show help
-   --version, -v	print the version
+   --logfile, -l 		redirect output to a log file [$Y10K_LOGFILE]
+   --quiet, -q			less verbose
+   --debug, -d			print debug output [$Y10K_DEBUG]
+   --tmppath, -t "/tmp/y10k"	path to y10k temporary objects [$Y10K_TMPPATH]
+   --help, -h			show help
+   --version, -v		print the version
 
 ```
 
