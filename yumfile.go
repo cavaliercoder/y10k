@@ -9,13 +9,6 @@ import (
 	"strings"
 )
 
-const (
-	y10kTmpPath  = "/tmp/y10k"
-	yumConfPath  = "/tmp/y10k/yum.conf"
-	yumLogfile   = "/tmp/y10k/yum.log"
-	yumCachePath = "/tmp/y10k/cache"
-)
-
 type Yumfile struct {
 	Repos           []Repo
 	LocalPathPrefix string
@@ -203,15 +196,15 @@ func (c *Yumfile) Sync(repos []Repo) error {
 }
 
 func (c *Yumfile) installYumConf(repo *Repo) error {
-	Dprintf("Installing yum.conf file: %s\n", yumConfPath)
+	Dprintf("Installing yum.conf file: %s\n", TmpYumConfPath)
 
 	// create temp path
-	if err := os.MkdirAll(y10kTmpPath, 0750); err != nil {
+	if err := os.MkdirAll(TmpBasePath, 0750); err != nil {
 		return err
 	}
 
 	// create config file
-	f, err := os.Create(yumConfPath)
+	f, err := os.Create(TmpYumConfPath)
 	if err != nil {
 		return err
 	}
@@ -219,12 +212,12 @@ func (c *Yumfile) installYumConf(repo *Repo) error {
 
 	// global yum conf
 	fmt.Fprintf(f, "[main]\n")
-	fmt.Fprintf(f, "cachedir=%s\n", yumCachePath)
+	fmt.Fprintf(f, "cachedir=%s\n", TmpYumCachePath)
 	fmt.Fprintf(f, "debuglevel=10\n")
 	fmt.Fprintf(f, "exactarch=0\n")
 	fmt.Fprintf(f, "gpgcheck=0\n")
 	fmt.Fprintf(f, "keepcache=0\n")
-	fmt.Fprintf(f, "logfile=%s\n", yumLogfile)
+	fmt.Fprintf(f, "logfile=%s\n", TmpYumLogFile)
 	fmt.Fprintf(f, "plugins=0\n")
 	fmt.Fprintf(f, "reposdir=\n")
 	fmt.Fprintf(f, "rpmverbosity=debug\n")
@@ -246,7 +239,7 @@ func (c *Yumfile) reposync(repo *Repo) error {
 
 	// compute args for reposync command
 	args := []string{
-		fmt.Sprintf("--config=%s", yumConfPath),
+		fmt.Sprintf("--config=%s", TmpYumConfPath),
 		fmt.Sprintf("--repoid=%s", repo.ID),
 		"--norepopath",
 		"--downloadcomps",
