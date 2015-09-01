@@ -9,8 +9,8 @@ import (
 )
 
 var (
-	QuietMode       = false
-	DebugMode       = false
+	QuietMode       bool
+	DebugMode       bool
 	YumfilePath     string
 	LogFilePath     string
 	TmpBasePath     string

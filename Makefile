@@ -26,7 +26,10 @@ clean:
 	$(GO) clean
 	$(RM) -f $(APP) $(TARBALL)
 
-docker:
+docker-image:
 	docker build -t cavaliercoder/y10k .
 
-.PHONY: all get-deps tar clean docker
+docker-run:
+	docker run -it --rm -v $(PWD):/usr/src/y10k cavaliercoder/y10k
+
+.PHONY: all get-deps tar clean docker-image docker-run
