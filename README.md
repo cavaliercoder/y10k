@@ -31,7 +31,7 @@ USAGE:
    y10k [global options] command [command options] [arguments...]
 
 VERSION:
-   0.2.0
+   0.3.0
 
 AUTHOR(S):
    Ryan Armstrong <ryan@cavaliercoder.com>

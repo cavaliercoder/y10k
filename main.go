@@ -26,7 +26,7 @@ func main() {
 	// route request
 	app := cli.NewApp()
 	app.Name = "y10k"
-	app.Version = "0.2.0"
+	app.Version = "0.3.0"
 	app.Author = "Ryan Armstrong"
 	app.Email = "ryan@cavaliercoder.com"
 	app.Usage = "simplified yum mirror management"

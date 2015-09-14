@@ -1,5 +1,5 @@
 APP = y10k
-APPVER = 0.2.0
+APPVER = 0.3.0
 ARCH = $(shell uname -m)
 PACKAGE = $(APP)-$(APPVER).$(ARCH)
 TARBALL = $(PACKAGE).tar.gz
