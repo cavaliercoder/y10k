@@ -82,3 +82,6 @@ configure `reposync` and `createrepo`:
    the upstream repository
 
  * `gpgcheck` (0 or 1) - delete local packages that fail GPG signature check.
+
+ * `checksum` (sha256 or sha) - checksum type to use when creating a repository
+   database (default: sha256)
