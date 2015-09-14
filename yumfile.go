@@ -80,20 +80,24 @@ func LoadYumfile(path string) (*Yumfile, error) {
 				switch key {
 				case "localpath":
 					repo.LocalPath = val
+
 				case "arch":
 					repo.Architecture = val
+
 				case "newonly":
 					if b, err := strToBool(val); err != nil {
 						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
 					} else {
 						repo.NewOnly = b
 					}
+
 				case "sources":
 					if b, err := strToBool(val); err != nil {
 						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
 					} else {
 						repo.IncludeSources = b
 					}
+
 				case "deleteremoved":
 					if b, err := strToBool(val); err != nil {
 						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
@@ -110,6 +114,9 @@ func LoadYumfile(path string) (*Yumfile, error) {
 						// pass through to yum
 						repo.Parameters[key] = val
 					}
+
+				case "checksum":
+					repo.Checksum = val
 
 				default:
 					repo.Parameters[key] = val
@@ -304,6 +311,11 @@ func (c *Yumfile) createrepo(repo *Repo) error {
 	// debug switches
 	if DebugMode {
 		args = append(args, "--verbose")
+	}
+
+	// non-default checksum type
+	if repo.Checksum != "" {
+		args = append(args, fmt.Sprintf("--checksum=%s", repo.Checksum))
 	}
 
 	// path to create repo for

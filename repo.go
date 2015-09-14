@@ -13,6 +13,7 @@ type Repo struct {
 	Architecture   string
 	YumfilePath    string
 	YumfileLineNo  int
+	Checksum       string
 }
 
 func NewRepo() *Repo {

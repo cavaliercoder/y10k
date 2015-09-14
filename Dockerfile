@@ -1,11 +1,9 @@
 FROM centos:7
 
-RUN yum update -y
-
 # install OS packages
-RUN yum install -y epel-release 
-
-RUN yum install -y \
+RUN yum install -y epel-release && \
+	yum clean all && yum makecache && \
+	yum install -y \
 	createrepo \
 	git \
 	golang \
