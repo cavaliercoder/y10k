@@ -14,6 +14,7 @@ type Repo struct {
 	YumfilePath    string
 	YumfileLineNo  int
 	Checksum       string
+	Groupfile      string
 }
 
 func NewRepo() *Repo {

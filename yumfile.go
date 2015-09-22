@@ -118,6 +118,9 @@ func LoadYumfile(path string) (*Yumfile, error) {
 				case "checksum":
 					repo.Checksum = val
 
+				case "groupfile":
+					repo.Groupfile = val
+
 				default:
 					repo.Parameters[key] = val
 				}
@@ -311,6 +314,10 @@ func (c *Yumfile) createrepo(repo *Repo) error {
 	// debug switches
 	if DebugMode {
 		args = append(args, "--verbose")
+	}
+
+	if repo.Groupfile != "" {
+		args = append(args, fmt.Sprintf("--groupfile=%s", repo.Groupfile))
 	}
 
 	// non-default checksum type
