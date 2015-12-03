@@ -16,10 +16,12 @@ yum install -y \
 mkdir /home/vagrant/go
 cat >> /home/vagrant/.bashrc <<EOF
 export GOPATH=\\$HOME/go
+export PATH=\\$PATH:/vagrant:\\$HOME/go/bin
 
 EOF
 
 # install go dependencies
+source /home/vagrant/.bashrc
 cd /vagrant
 make get-deps
 

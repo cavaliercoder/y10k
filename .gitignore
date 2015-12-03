@@ -1,5 +1,6 @@
-.vagrant/
-y10k
 *.log
 *.tar.gz
 .sass-cache/
+.vagrant/
+y10k
+Yumfile
