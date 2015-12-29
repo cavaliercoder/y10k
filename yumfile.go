@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -78,6 +79,12 @@ func LoadYumfile(path string) (*Yumfile, error) {
 			} else {
 				// add key/val to current repo
 				switch key {
+				case "baseurl":
+					repo.BaseURL = val
+
+				case "mirrorlist":
+					repo.MirrorURL = val
+
 				case "localpath":
 					repo.LocalPath = val
 
@@ -184,20 +191,17 @@ func (c *Yumfile) SyncAll() error {
 
 // Sync processes all repository mirrors defined in a Yumfile
 func (c *Yumfile) Sync(repos []Repo) error {
-	//if err := c.installYumConf(repos); err != nil {
-	//	return err
-	//}
-
 	for _, repo := range repos {
 		if err := c.installYumConf(&repo); err != nil {
 			Errorf(err, "Failed to create yum.conf for %s", repo.ID)
 		} else {
-			if err := c.reposync(&repo); err != nil {
+			// TODO: make sure cache path is always unique for all repos with same ID
+			if err := repo.CacheLocal(filepath.Join(TmpYumCachePath, repo.ID)); err != nil {
 				Errorf(err, "Failed to download updates for %s", repo.ID)
 			} else {
-				if err := c.createrepo(&repo); err != nil {
+				/*if err := c.createrepo(&repo); err != nil {
 					Errorf(err, "Failed to update repo database for %s", repo.ID)
-				}
+				}*/
 			}
 		}
 	}

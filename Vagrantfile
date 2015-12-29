@@ -20,10 +20,15 @@ export PATH=\\$PATH:/vagrant:\\$HOME/go/bin
 
 EOF
 
-# install go dependencies
-source /home/vagrant/.bashrc
-cd /vagrant
-make get-deps
+# symlink go-rpm if checked out locally
+GORPM_PATH=/home/vagrant/go/src/github.com/cavaliercoder/go-rpm
+mkdir -p $GORPM_PATH
+if [[ -d /vagrant/go-rpm ]]; then
+	# delete existing clone
+	[[ ! -h $GORPM_PATH ]] && rm -rf $GORPM_PATH
+
+	ln -s /vagrant/go-rpm $GORPM_PATH
+fi
 
 # fix perms
 chown -R vagrant.vagrant /home/vagrant

@@ -2,5 +2,7 @@
 *.tar.gz
 .sass-cache/
 .vagrant/
+.y10k-cache/
+go-rpm/
 y10k
 Yumfile

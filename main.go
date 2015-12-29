@@ -6,6 +6,7 @@ import (
 	"github.com/codegangsta/cli"
 	"os"
 	"os/signal"
+	"path/filepath"
 )
 
 var (
@@ -46,10 +47,10 @@ func main() {
 			EnvVar: "Y10K_DEBUG",
 		},
 		cli.StringFlag{
-			Name:   "tmppath, t",
-			Usage:  "path to y10k temporary objects",
-			Value:  "/tmp/y10k",
-			EnvVar: "Y10K_TMPPATH",
+			Name:   "cachedir, c",
+			Usage:  "path to y10k cache",
+			Value:  "/var/cache/y10k",
+			EnvVar: "Y10K_CACHEDIR",
 		},
 	}
 
@@ -101,10 +102,11 @@ func main() {
 		DebugMode = context.GlobalBool("debug")
 		LogFilePath = context.GlobalString("logfile")
 
-		TmpBasePath = context.GlobalString("tmppath")
-		TmpYumConfPath = context.GlobalString("tmppath") + "/" + "yum.conf"
-		TmpYumLogFile = context.GlobalString("tmppath") + "/" + "yum.log"
-		TmpYumCachePath = context.GlobalString("tmppath") + "/" + "cache"
+		TmpBasePath = context.GlobalString("cachedir")
+
+		TmpYumConfPath = filepath.Join(TmpBasePath, "yum.conf")
+		TmpYumLogFile = filepath.Join(TmpBasePath, "yum.log")
+		TmpYumCachePath = TmpBasePath
 
 		// configure logging
 		InitLogFile()
