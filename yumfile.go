@@ -92,28 +92,28 @@ func LoadYumfile(path string) (*Yumfile, error) {
 
 				case "newonly":
 					if b, err := strToBool(val); err != nil {
-						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %v", n, err)
 					} else {
 						repo.NewOnly = b
 					}
 
 				case "sources":
 					if b, err := strToBool(val); err != nil {
-						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %v", n, err)
 					} else {
 						repo.IncludeSources = b
 					}
 
 				case "deleteremoved":
 					if b, err := strToBool(val); err != nil {
-						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %v", n, err)
 					} else {
 						repo.DeleteRemoved = b
 					}
 
 				case "gpgcheck":
 					if b, err := strToBool(val); err != nil {
-						return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, err.Error())
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %v", n, err)
 					} else {
 						repo.GPGCheck = b
 

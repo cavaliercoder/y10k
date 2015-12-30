@@ -115,7 +115,7 @@ func main() {
 
 		DownloadThreads = context.GlobalInt("threads")
 		if DownloadThreads == 0 {
-			DownloadThreads = 5
+			DownloadThreads = 3
 		}
 
 		// configure logging

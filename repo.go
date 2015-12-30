@@ -5,6 +5,7 @@ import (
 	"compress/bzip2"
 	"compress/gzip"
 	"fmt"
+	"github.com/cavaliercoder/go-rpm"
 	"github.com/cavaliercoder/go-rpm/yum"
 	"github.com/pivotal-golang/bytefmt"
 	"io"
@@ -363,6 +364,9 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	if err != nil {
 		return fmt.Errorf("Error reading packages from primary_db: %v", err)
 	}
+
+	// filter list
+	packages = c.FilterPackages(packages)
 	Dprintf("Found %d packages in primary_db\n", len(packages))
 
 	// build a list of missing packages
@@ -423,4 +427,55 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	Download(jobs)
 
 	return nil
+}
+
+func (c *Repo) FilterPackages(packages yum.PackageEntries) yum.PackageEntries {
+	newest := make(map[string]*yum.PackageEntry, 0)
+
+	// calculate which packages are the latest
+	if c.NewOnly {
+		for i, p := range packages {
+			// index on name and architecture
+			id := fmt.Sprint("%s.%s", p.Name(), p.Architecture())
+
+			// lookup previous index
+			if n, ok := newest[id]; ok {
+				// compare version with previous index
+				if 1 == rpm.VersionCompare(rpm.Package(&p), rpm.Package(n)) {
+					newest[id] = &packages[i]
+				}
+			} else {
+				// add new index for this package
+				newest[id] = &packages[i]
+			}
+		}
+
+		// replace packages with only the latest packages
+		i := 0
+		packages = make(yum.PackageEntries, len(newest))
+		for _, p := range newest {
+			packages[i] = *p
+			i++
+		}
+	}
+
+	// filter the package list
+	filtered := make(yum.PackageEntries, 0)
+	for _, p := range packages {
+		include := true
+
+		// filter by architecture
+		if c.Architecture != "" {
+			if p.Architecture() != c.Architecture {
+				include = false
+			}
+		}
+
+		// append to output
+		if include {
+			filtered = append(filtered, p)
+		}
+	}
+
+	return filtered
 }

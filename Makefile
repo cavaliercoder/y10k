@@ -15,6 +15,7 @@ $(APP): main.go io.go repo.go yumfile.go
 
 get-deps:
 	$(GO) get github.com/cavaliercoder/go-rpm
+	$(GO) get github.com/mattn/go-sqlite3
 	$(GO) get github.com/codegangsta/cli
 	$(GO) get github.com/pivotal-golang/bytefmt
 	$(GO) get xi2.org/x/xz
