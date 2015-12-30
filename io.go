@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 )
 
 const (
@@ -18,7 +17,6 @@ const (
 )
 
 var (
-	cmd           *exec.Cmd   = nil
 	logfileHandle *os.File    = nil
 	logger        *log.Logger = nil
 )

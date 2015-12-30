@@ -429,6 +429,8 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	return nil
 }
 
+// FilterPackages returns a list of packages filtered according the repo's
+// settings.
 func (c *Repo) FilterPackages(packages yum.PackageEntries) yum.PackageEntries {
 	newest := make(map[string]*yum.PackageEntry, 0)
 
