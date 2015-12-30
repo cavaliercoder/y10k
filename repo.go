@@ -103,17 +103,6 @@ func (c *Repo) CacheLocal(path string) error {
 		return err
 	}
 
-	// read packages
-	db, err := yum.OpenPrimaryDB(primarydb_path)
-	if err != nil {
-		return err
-	}
-
-	_, err = db.Packages()
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
@@ -137,6 +126,7 @@ func (c *Repo) cacheMetadata(cachedir string) (*yum.RepoMetadata, error) {
 	repomd_path := filepath.Join(cachedir, "repomd.xml")
 
 	// open repo metadata from URL
+	// TODO: Add support for non HTTP repositories
 	Dprintf("Downloading repo metadata from %s...\n", repomd_url)
 	resp, err := http.Get(repomd_url)
 	if err != nil {
@@ -235,7 +225,7 @@ func (c *Repo) downloadDatabase(cachedir string, db *yum.RepoDatabase) (string, 
 			return "", fmt.Errorf("Bad response code downloading %v database: %s", db, resp.Status)
 		}
 
-		// save to file
+		// open output file for writing
 		Dprintf("Caching %v database to %s...\n", db, db_path)
 		f, err := os.Create(db_path)
 		if err != nil {
@@ -243,20 +233,19 @@ func (c *Repo) downloadDatabase(cachedir string, db *yum.RepoDatabase) (string, 
 		}
 		defer f.Close()
 
+		// download
 		_, err = io.Copy(f, resp.Body)
 		if err != nil {
 			return "", fmt.Errorf("Error downloading %v database: %v", db, err)
 		}
+		resp.Body.Close()
+		f.Close()
 
 		// validate checksum
-		f.Close()
-		f, err = os.Open(db_path)
-		if err != nil {
-			return "", fmt.Errorf("Error opening downloaded %v database: %v", db, err)
-		}
-
-		if err = db.Checksum.Check(f); err == yum.ErrChecksumMismatch {
+		if err := db.Checksum.CheckFile(db_path); err == yum.ErrChecksumMismatch {
 			return "", fmt.Errorf("Database %v was download but failed checksum validation", db)
+		} else if err != nil {
+			return "", fmt.Errorf("Error opening downloaded %v database: %v", db, err)
 		}
 	}
 
@@ -295,7 +284,6 @@ func (c *Repo) decompressDatabase(cachedir string, path string, db *yum.RepoData
 
 	// select decompression type
 	var z io.Reader
-
 	if strings.HasSuffix(path, ".bz2") {
 		z = bzip2.NewReader(r)
 
@@ -322,24 +310,16 @@ func (c *Repo) decompressDatabase(cachedir string, path string, db *yum.RepoData
 	}
 	defer w.Close()
 
-	// read the bzip2 file
+	// decompress
 	_, err = io.Copy(w, z)
 	if err != nil {
 		return "", fmt.Errorf("Error decompressing %v database: %v", db, err)
 	}
+	w.Close()
 
 	// validate checksum
-	f, err := os.Open(dpath)
-	if err != nil {
-		return "", fmt.Errorf("Error opening decompressed %v database for reading: %v", db, err)
-	}
-	defer f.Close()
-
-	err = db.OpenChecksum.Check(f)
-	if err == yum.ErrChecksumMismatch {
-		// naively remove bad file
+	if err := db.OpenChecksum.CheckFile(dpath); err == yum.ErrChecksumMismatch {
 		os.Remove(dpath)
-
 		return "", fmt.Errorf("Decompressed %v database failed checksum validation", db)
 	} else if err != nil {
 		return "", fmt.Errorf("Error validating checksum for %v database: %v", db, err)

@@ -3,10 +3,13 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/cavaliercoder/go-rpm/yum"
+	"io"
+	"io/ioutil"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"strings"
 )
 
@@ -132,9 +135,7 @@ func LoadYumfile(path string) (*Yumfile, error) {
 					repo.Parameters[key] = val
 				}
 			}
-		} else if commentPattern.MatchString(s) {
-			// ignore line
-		} else {
+		} else if !commentPattern.MatchString(s) {
 			return nil, NewErrorf("Syntax error in Yumfile on line %d: %s", n, s)
 		}
 	}
@@ -185,163 +186,146 @@ func (c *Yumfile) GetRepoByID(id string) *Repo {
 	return nil
 }
 
-func (c *Yumfile) SyncAll() error {
-	return c.Sync(c.Repos)
+func (c *Yumfile) SyncRepo(repo *Repo) error {
+	cachedir := filepath.Join(TmpYumCachePath, repo.ID)
+
+	// cache repo metadata locally to TmpYumCachePath
+	if err := repo.CacheLocal(cachedir); err != nil {
+		return fmt.Errorf("Failed to cache metadata for repo %v", repo)
+	}
+
+	// create package directory
+	packagedir := filepath.Join(c.LocalPathPrefix, repo.LocalPath)
+	if err := os.MkdirAll(packagedir, 0750); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("Error creating local package path %s: %v", packagedir, err)
+	}
+
+	// list existing files
+	files, err := ioutil.ReadDir(packagedir)
+	if err != nil {
+		return fmt.Errorf("Error reading packages")
+	}
+
+	// open cached primary_db
+	primarydb_path := filepath.Join(cachedir, "gen/primary_db.sqlite")
+	primarydb, err := yum.OpenPrimaryDB(primarydb_path)
+	if err != nil {
+		return fmt.Errorf("Error opening primary_db: %v", err)
+	}
+
+	// load packages from primary_db
+	Dprintf("Loading package metadata from primary_db...\n")
+	packages, err := primarydb.Packages()
+	if err != nil {
+		return fmt.Errorf("Error reading packages from primary_db: %v", err)
+	}
+	Dprintf("Found %d packages in primary_db\n", len(packages))
+
+	// build a list of missing packages
+	Dprintf("Checking for existing packages in %s...\n", packagedir)
+	missing := make([]yum.PackageEntry, 0)
+	for _, p := range packages {
+		package_filename := filepath.Base(p.LocationHref())
+		package_path := filepath.Join(packagedir, filepath.Base(p.LocationHref()))
+
+		// search local files
+		found := false
+		for _, filename := range files {
+			if filename.Name() == package_filename {
+
+				// validate checksum
+				err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
+				if err == yum.ErrChecksumMismatch {
+					Errorf(err, "Existing file failed checksum validation for package %v", p)
+					break
+
+				} else if err != nil {
+					Errorf(err, "Error validating checksum for package %v", p)
+					break
+
+				}
+
+				// valid package found
+				found = true
+				break
+			}
+		}
+
+		// TODO: filter packages according to Yumfile rules
+
+		if !found {
+			missing = append(missing, p)
+		}
+	}
+
+	Dprintf("Scheduled %d packages for download\n", len(missing))
+
+	// download missing packages
+	for i, p := range missing {
+		package_url := fmt.Sprintf("%s/%s", repo.BaseURL, p.LocationHref())
+		package_path := filepath.Join(packagedir, filepath.Base(p.LocationHref()))
+
+		// http request
+		Dprintf("[ %d / %d ] Downloading %v from %s...\n", i+1, len(missing), p, package_url)
+		resp, err := http.Get(package_url)
+		if err != nil {
+			Errorf(err, "Error downloading package %v", p)
+			continue
+		}
+		defer resp.Body.Close()
+
+		// check response code
+		if resp.StatusCode != http.StatusOK {
+			Errorf(nil, "Bad response code downloading package %v: %s", p, resp.Status)
+			continue
+		}
+
+		// open local file for writing
+		w, err := os.Create(package_path)
+		if err != nil {
+			Errorf(err, "Error opening %s for writing", package_path)
+			continue
+		}
+		defer w.Close()
+
+		// download
+		_, err = io.Copy(w, resp.Body)
+		if err != nil {
+			Errorf(err, "Error downloading %v", p)
+			continue
+		}
+		resp.Body.Close()
+		w.Close()
+
+		// validate checksum
+		err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
+		if err == yum.ErrChecksumMismatch {
+			Errorf(err, "Downloaded file failed checksum validation for package %v", p)
+			continue
+		} else if err != nil {
+			Errorf(err, "Error validating checksum for package %v", p)
+			continue
+		}
+	}
+
+	return nil
+
 }
 
 // Sync processes all repository mirrors defined in a Yumfile
-func (c *Yumfile) Sync(repos []Repo) error {
+func (c *Yumfile) SyncRepos(repos []Repo) error {
+	// TODO: make sure cache path is always unique for all repos with same ID
 	for _, repo := range repos {
-		if err := c.installYumConf(&repo); err != nil {
-			Errorf(err, "Failed to create yum.conf for %s", repo.ID)
-		} else {
-			// TODO: make sure cache path is always unique for all repos with same ID
-			if err := repo.CacheLocal(filepath.Join(TmpYumCachePath, repo.ID)); err != nil {
-				Errorf(err, "Failed to download updates for %s", repo.ID)
-			} else {
-				/*if err := c.createrepo(&repo); err != nil {
-					Errorf(err, "Failed to update repo database for %s", repo.ID)
-				}*/
-			}
+		if err := c.SyncRepo(&repo); err != nil {
+			Errorf(err, "Error synchronizing repo %v", repo)
 		}
 	}
 
 	return nil
 }
 
-func (c *Yumfile) installYumConf(repo *Repo) error {
-	Dprintf("Installing yum.conf file: %s\n", TmpYumConfPath)
-
-	// create temp path
-	if err := os.MkdirAll(TmpBasePath, 0750); err != nil {
-		return err
-	}
-
-	// create config file
-	f, err := os.Create(TmpYumConfPath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	// global yum conf
-	fmt.Fprintf(f, "[main]\n")
-	fmt.Fprintf(f, "cachedir=%s\n", TmpYumCachePath)
-	fmt.Fprintf(f, "debuglevel=10\n")
-	fmt.Fprintf(f, "exactarch=0\n")
-	fmt.Fprintf(f, "gpgcheck=0\n")
-	fmt.Fprintf(f, "keepcache=0\n")
-	fmt.Fprintf(f, "logfile=%s\n", TmpYumLogFile)
-	fmt.Fprintf(f, "plugins=0\n")
-	fmt.Fprintf(f, "reposdir=\n")
-	fmt.Fprintf(f, "rpmverbosity=debug\n")
-	fmt.Fprintf(f, "timeout=5\n")
-	fmt.Fprintf(f, "\n")
-
-	// append repo config
-	fmt.Fprintf(f, "[%s]\n", repo.ID)
-	for key, val := range repo.Parameters {
-		fmt.Fprintf(f, "%s=%s\n", key, val)
-	}
-	fmt.Fprintf(f, "\n")
-
-	return nil
-}
-
-func (c *Yumfile) reposync(repo *Repo) error {
-	Printf("Syncronizing repo: %s\n", repo.ID)
-
-	// compute args for reposync command
-	args := []string{
-		fmt.Sprintf("--config=%s", TmpYumConfPath),
-		fmt.Sprintf("--repoid=%s", repo.ID),
-		"--norepopath",
-		"--downloadcomps",
-		"--download-metadata",
-	}
-
-	if QuietMode {
-		args = append(args, "--quiet")
-	}
-
-	if repo.NewOnly {
-		args = append(args, "--newest-only")
-	}
-
-	if repo.IncludeSources {
-		args = append(args, "--source")
-	}
-
-	if repo.DeleteRemoved {
-		args = append(args, "--delete")
-	}
-
-	if repo.GPGCheck {
-		args = append(args, "--gpgcheck")
-	}
-
-	if repo.Architecture != "" {
-		args = append(args, fmt.Sprintf("--arch=%s", repo.Architecture))
-	}
-
-	if repo.LocalPath != "" {
-		args = append(args, fmt.Sprintf("--download_path=%s", repo.LocalPath))
-	} else {
-		args = append(args, fmt.Sprintf("--download_path=./%s", repo.ID))
-	}
-
-	// execute and capture output
-	if err := Exec("reposync", args...); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (c *Yumfile) createrepo(repo *Repo) error {
-	Printf("Updating repo database: %s\n", repo.ID)
-
-	// compute args for createrepo command
-	args := []string{
-		"--update",
-		"--database",
-		"--checkts",
-		fmt.Sprintf("--workers=%d", runtime.NumCPU()*2),
-	}
-
-	if QuietMode {
-		args = append(args, "--quiet")
-	} else {
-		args = append(args, "--profile")
-	}
-
-	// debug switches
-	if DebugMode {
-		args = append(args, "--verbose")
-	}
-
-	if repo.Groupfile != "" {
-		args = append(args, fmt.Sprintf("--groupfile=%s", repo.Groupfile))
-	}
-
-	// non-default checksum type
-	if repo.Checksum != "" {
-		args = append(args, fmt.Sprintf("--checksum=%s", repo.Checksum))
-	}
-
-	// path to create repo for
-	if repo.LocalPath != "" {
-		args = append(args, repo.LocalPath)
-	} else {
-		args = append(args, fmt.Sprintf("./%s", repo.ID))
-	}
-
-	// execute and capture output
-	if err := Exec("createrepo", args...); err != nil {
-		return err
-	}
-
-	return nil
+func (c *Yumfile) SyncAll() error {
+	return c.SyncRepos(c.Repos)
 }
 
 func strToBool(s string) (bool, error) {
