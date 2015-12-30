@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"compress/bzip2"
+	"compress/gzip"
 	"fmt"
 	"github.com/cavaliercoder/go-rpm/yum"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
+	"xi2.org/x/xz"
 )
 
 // Repo is a package repository defined in a Yumfile
@@ -32,12 +35,20 @@ type Repo struct {
 	YumfilePath    string
 }
 
+// NewRepo initializes a new Repo struct and returns a pointer to it.
 func NewRepo() *Repo {
 	return &Repo{
 		Parameters: make(map[string]string, 0),
 	}
 }
 
+func (c *Repo) String() string {
+	return c.ID
+}
+
+// Validate checks the syntax of a repo defined in a Yumfile and returns an
+// on the first syntax error encountered. If no errors are found, nil is
+// returned.
 func (c *Repo) Validate() error {
 	if c.ID == "" {
 		return NewErrorf("Upstream repository has no ID specified (in %s:%d)", c.YumfilePath, c.YumfileLineNo)
@@ -50,8 +61,11 @@ func (c *Repo) Validate() error {
 	return nil
 }
 
+// CacheLocal caches a copy of a Repo's metadata and databases to the given
+// cache directory. If the Repo is already cached, the cache is validated and
+// updated if the source repository has been udpated.
 func (c *Repo) CacheLocal(path string) error {
-	Dprintf("Caching %s to %s...\n", c.ID, path)
+	Dprintf("Caching %v to %s...\n", c, path)
 
 	// create cache folder
 	if err := c.mkCacheDir(path); err != nil {
@@ -84,7 +98,18 @@ func (c *Repo) CacheLocal(path string) error {
 	}
 
 	// decompress primary database
-	_, err = c.decompressDatabase(path, primarydb_path, primarydb)
+	primarydb_path, err = c.decompressDatabase(path, primarydb_path, primarydb)
+	if err != nil {
+		return err
+	}
+
+	// read packages
+	db, err := yum.OpenPrimaryDB(primarydb_path)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Packages()
 	if err != nil {
 		return err
 	}
@@ -92,6 +117,8 @@ func (c *Repo) CacheLocal(path string) error {
 	return nil
 }
 
+// mkCacheDir creates directories required for caching, with all missing parent
+// directories.
 func (c *Repo) mkCacheDir(path string) error {
 	if err := os.MkdirAll(path, 0750); err != nil && os.IsNotExist(err) {
 		return fmt.Errorf("Error creating cache directory %s: %v", path, err)
@@ -100,12 +127,14 @@ func (c *Repo) mkCacheDir(path string) error {
 	return nil
 }
 
-func (c *Repo) cacheMetadata(path string) (*yum.RepoMetadata, error) {
+// cacheMetadata downloads a repository's repomd.xml file to the given cache
+// directory.
+func (c *Repo) cacheMetadata(cachedir string) (*yum.RepoMetadata, error) {
 	// TODO: add support for repository mirror lists
 
 	// TODO: prevent double forward-slash in URL joins
 	repomd_url := fmt.Sprintf("%s/repodata/repomd.xml", c.BaseURL)
-	repomd_path := filepath.Join(path, "repomd.xml")
+	repomd_path := filepath.Join(cachedir, "repomd.xml")
 
 	// open repo metadata from URL
 	Dprintf("Downloading repo metadata from %s...\n", repomd_url)
@@ -164,10 +193,12 @@ func (c *Repo) cacheMetadata(path string) (*yum.RepoMetadata, error) {
 	return repomd, nil
 }
 
-func (c *Repo) downloadDatabase(path string, db *yum.RepoDatabase) (string, error) {
+// downloadDatabase downloads and caches the given repository database (E.g.
+// primary_db or filelists_db) to the given cache directory.
+func (c *Repo) downloadDatabase(cachedir string, db *yum.RepoDatabase) (string, error) {
 	// parse db paths
 	db_url := fmt.Sprintf("%s/%s", c.BaseURL, db.Location.Href)
-	db_path := filepath.Join(path, filepath.Base(db.Location.Href))
+	db_path := filepath.Join(cachedir, filepath.Base(db.Location.Href))
 
 	// check cached database
 	update_db := false
@@ -201,10 +232,11 @@ func (c *Repo) downloadDatabase(path string, db *yum.RepoDatabase) (string, erro
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("Base response code downloading %v database: %s", db, resp.Status)
+			return "", fmt.Errorf("Bad response code downloading %v database: %s", db, resp.Status)
 		}
 
 		// save to file
+		Dprintf("Caching %v database to %s...\n", db, db_path)
 		f, err := os.Create(db_path)
 		if err != nil {
 			return "", fmt.Errorf("Error creating cache file for %v database: %v", db, err)
@@ -215,11 +247,24 @@ func (c *Repo) downloadDatabase(path string, db *yum.RepoDatabase) (string, erro
 		if err != nil {
 			return "", fmt.Errorf("Error downloading %v database: %v", db, err)
 		}
+
+		// validate checksum
+		f.Close()
+		f, err = os.Open(db_path)
+		if err != nil {
+			return "", fmt.Errorf("Error opening downloaded %v database: %v", db, err)
+		}
+
+		if err = db.Checksum.Check(f); err == yum.ErrChecksumMismatch {
+			return "", fmt.Errorf("Database %v was download but failed checksum validation", db)
+		}
 	}
 
 	return db_path, nil
 }
 
+// decompressDatabase decompresses a locally cached, compressed repository
+// database into the given cache directory.
 func (c *Repo) decompressDatabase(cachedir string, path string, db *yum.RepoDatabase) (string, error) {
 	basepath := filepath.Join(cachedir, "gen")
 	dpath := ""
@@ -229,44 +274,76 @@ func (c *Repo) decompressDatabase(cachedir string, path string, db *yum.RepoData
 		return "", err
 	}
 
+	// determine output path
 	switch db.DatabaseVersion {
-	// TODO: add support for .xml.gz primary dbs
+	case 0: // XML files
+		dpath = filepath.Join(basepath, fmt.Sprintf("%s.xml", db.Type))
 
 	case 10: // bzip2'd sqlite file
 		dpath = filepath.Join(basepath, fmt.Sprintf("%s.sqlite", db.Type))
-		err := c.bzip2Decompress(path, dpath)
-		if err != nil {
-			return "", fmt.Errorf("Error decompressing %v database: %v", db, err)
-		}
 
 	default:
 		return "", fmt.Errorf("Unsupported database version for %v: %d", db, db.DatabaseVersion)
 	}
 
-	return dpath, nil
-}
-
-func (c *Repo) bzip2Decompress(path string, out string) error {
-	// open the file
-	f, err := os.Open(path)
+	// open the archive for decompression
+	r, err := os.Open(path)
 	if err != nil {
-		return err
+		return "", fmt.Errorf("Error opening compressed %v database: %v", db, err)
+	}
+	defer r.Close()
+
+	// select decompression type
+	var z io.Reader
+
+	if strings.HasSuffix(path, ".bz2") {
+		z = bzip2.NewReader(r)
+
+	} else if strings.HasSuffix(path, ".xz") {
+		z, err = xz.NewReader(r, 0)
+		if err != nil {
+			return "", fmt.Errorf("Error initializing xz decompression: %v", err)
+		}
+
+	} else if strings.HasSuffix(path, ".gz") {
+		z, err = gzip.NewReader(r)
+		if err != nil {
+			return "", fmt.Errorf("Error initializing gzip decompression: %v", err)
+		}
+
+	} else {
+		return "", fmt.Errorf("Unsupported compression format for %v database: %s", db, path)
+	}
+
+	// open output file
+	w, err := os.Create(dpath)
+	if err != nil {
+		return "", fmt.Errorf("Error creating output file for %v database: %v", db, err)
+	}
+	defer w.Close()
+
+	// read the bzip2 file
+	_, err = io.Copy(w, z)
+	if err != nil {
+		return "", fmt.Errorf("Error decompressing %v database: %v", db, err)
+	}
+
+	// validate checksum
+	f, err := os.Open(dpath)
+	if err != nil {
+		return "", fmt.Errorf("Error opening decompressed %v database for reading: %v", db, err)
 	}
 	defer f.Close()
 
-	// open output file
-	o, err := os.Create(out)
-	if err != nil {
-		return err
-	}
-	defer o.Close()
+	err = db.OpenChecksum.Check(f)
+	if err == yum.ErrChecksumMismatch {
+		// naively remove bad file
+		os.Remove(dpath)
 
-	// read the bzip2 file
-	z := bzip2.NewReader(f)
-	_, err = io.Copy(o, z)
-	if err != nil {
-		return err
+		return "", fmt.Errorf("Decompressed %v database failed checksum validation", db)
+	} else if err != nil {
+		return "", fmt.Errorf("Error validating checksum for %v database: %v", db, err)
 	}
 
-	return nil
+	return dpath, nil
 }

@@ -14,9 +14,10 @@ $(APP): main.go io.go repo.go yumfile.go
 	$(GO) build -x -o $(APP)
 
 get-deps:
-	$(GO) get github.com/codegangsta/cli
 	$(GO) get github.com/cavaliercoder/go-rpm
+	$(GO) get github.com/codegangsta/cli
 	$(GO) get github.com/mattn/go-sqlite3
+	$(go) get xi2.org/x/xz
 
 tar: $(APP) README.md
 	mkdir $(PACKAGE)
