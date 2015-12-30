@@ -63,7 +63,7 @@ func (c *Repo) Validate() error {
 
 // CacheLocal caches a copy of a Repo's metadata and databases to the given
 // cache directory. If the Repo is already cached, the cache is validated and
-// updated if the source repository has been udpated.
+// updated if the source repository has been updated.
 func (c *Repo) CacheLocal(path string) error {
 	Dprintf("Caching %v to %s...\n", c, path)
 
@@ -253,7 +253,7 @@ func (c *Repo) downloadDatabase(cachedir string, db *yum.RepoDatabase) (string, 
 }
 
 // decompressDatabase decompresses a locally cached, compressed repository
-// database into the given cache directory.
+// database into the gen/ subdirectory of the given cache directory.
 func (c *Repo) decompressDatabase(cachedir string, path string, db *yum.RepoDatabase) (string, error) {
 	basepath := filepath.Join(cachedir, "gen")
 	dpath := ""
@@ -326,4 +326,130 @@ func (c *Repo) decompressDatabase(cachedir string, path string, db *yum.RepoData
 	}
 
 	return dpath, nil
+}
+
+// Sync syncronizes a local package repository with an upstream repository using
+// filter rules defined for the repository in its parent Yumfile. All repository
+// metadata is cached in the given cache directory.
+func (c *Repo) Sync(cachedir, packagedir string) error {
+
+	// cache repo metadata locally to TmpYumCachePath
+	if err := c.CacheLocal(cachedir); err != nil {
+		return fmt.Errorf("Failed to cache metadata for repo %v", c)
+	}
+
+	// create package directory
+	if err := os.MkdirAll(packagedir, 0750); err != nil && !os.IsExist(err) {
+		return fmt.Errorf("Error creating local package path %s: %v", packagedir, err)
+	}
+
+	// list existing files
+	files, err := ioutil.ReadDir(packagedir)
+	if err != nil {
+		return fmt.Errorf("Error reading packages")
+	}
+
+	// open cached primary_db
+	primarydb_path := filepath.Join(cachedir, "gen/primary_db.sqlite")
+	primarydb, err := yum.OpenPrimaryDB(primarydb_path)
+	if err != nil {
+		return fmt.Errorf("Error opening primary_db: %v", err)
+	}
+
+	// load packages from primary_db
+	Dprintf("Loading package metadata from primary_db...\n")
+	packages, err := primarydb.Packages()
+	if err != nil {
+		return fmt.Errorf("Error reading packages from primary_db: %v", err)
+	}
+	Dprintf("Found %d packages in primary_db\n", len(packages))
+
+	// build a list of missing packages
+	Dprintf("Checking for existing packages in %s...\n", packagedir)
+	missing := make([]yum.PackageEntry, 0)
+	for _, p := range packages {
+		package_filename := filepath.Base(p.LocationHref())
+		package_path := filepath.Join(packagedir, filepath.Base(p.LocationHref()))
+
+		// search local files
+		found := false
+		for _, filename := range files {
+			if filename.Name() == package_filename {
+
+				// validate checksum
+				err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
+				if err == yum.ErrChecksumMismatch {
+					Errorf(err, "Existing file failed checksum validation for package %v", p)
+					break
+
+				} else if err != nil {
+					Errorf(err, "Error validating checksum for package %v", p)
+					break
+
+				}
+
+				// valid package found
+				found = true
+				break
+			}
+		}
+
+		// TODO: filter packages according to Yumfile rules
+
+		if !found {
+			missing = append(missing, p)
+		}
+	}
+
+	Dprintf("Scheduled %d packages for download\n", len(missing))
+
+	// download missing packages
+	for i, p := range missing {
+		package_url := fmt.Sprintf("%s/%s", c.BaseURL, p.LocationHref())
+		package_path := filepath.Join(packagedir, filepath.Base(p.LocationHref()))
+
+		// http request
+		Dprintf("[ %d / %d ] Downloading %v from %s...\n", i+1, len(missing), p, package_url)
+		resp, err := http.Get(package_url)
+		if err != nil {
+			Errorf(err, "Error downloading package %v", p)
+			continue
+		}
+		defer resp.Body.Close()
+
+		// check response code
+		if resp.StatusCode != http.StatusOK {
+			Errorf(nil, "Bad response code downloading package %v: %s", p, resp.Status)
+			continue
+		}
+
+		// open local file for writing
+		w, err := os.Create(package_path)
+		if err != nil {
+			Errorf(err, "Error opening %s for writing", package_path)
+			continue
+		}
+		defer w.Close()
+
+		// download
+		_, err = io.Copy(w, resp.Body)
+		if err != nil {
+			Errorf(err, "Error downloading %v", p)
+			continue
+		}
+		resp.Body.Close()
+		w.Close()
+
+		// validate checksum
+		err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
+		if err == yum.ErrChecksumMismatch {
+			Errorf(err, "Downloaded file failed checksum validation for package %v", p)
+			continue
+		} else if err != nil {
+			Errorf(err, "Error validating checksum for package %v", p)
+			continue
+		}
+	}
+
+	return nil
 }

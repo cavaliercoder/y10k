@@ -171,7 +171,7 @@ func ActionYumfileSync(context *cli.Context) {
 			Fatalf(nil, "No such repo found in Yumfile: %s", repo)
 		}
 
-		if err := yumfile.SyncRepo(mirror); err != nil {
+		if err := yumfile.SyncRepos([]Repo{*mirror}); err != nil {
 			Fatalf(err, "Error syncronizing repo '%s'", mirror.ID)
 		}
 	}

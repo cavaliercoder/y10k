@@ -3,10 +3,6 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/cavaliercoder/go-rpm/yum"
-	"io"
-	"io/ioutil"
-	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -186,137 +182,13 @@ func (c *Yumfile) GetRepoByID(id string) *Repo {
 	return nil
 }
 
-func (c *Yumfile) SyncRepo(repo *Repo) error {
-	cachedir := filepath.Join(TmpYumCachePath, repo.ID)
-
-	// cache repo metadata locally to TmpYumCachePath
-	if err := repo.CacheLocal(cachedir); err != nil {
-		return fmt.Errorf("Failed to cache metadata for repo %v", repo)
-	}
-
-	// create package directory
-	packagedir := filepath.Join(c.LocalPathPrefix, repo.LocalPath)
-	if err := os.MkdirAll(packagedir, 0750); err != nil && !os.IsExist(err) {
-		return fmt.Errorf("Error creating local package path %s: %v", packagedir, err)
-	}
-
-	// list existing files
-	files, err := ioutil.ReadDir(packagedir)
-	if err != nil {
-		return fmt.Errorf("Error reading packages")
-	}
-
-	// open cached primary_db
-	primarydb_path := filepath.Join(cachedir, "gen/primary_db.sqlite")
-	primarydb, err := yum.OpenPrimaryDB(primarydb_path)
-	if err != nil {
-		return fmt.Errorf("Error opening primary_db: %v", err)
-	}
-
-	// load packages from primary_db
-	Dprintf("Loading package metadata from primary_db...\n")
-	packages, err := primarydb.Packages()
-	if err != nil {
-		return fmt.Errorf("Error reading packages from primary_db: %v", err)
-	}
-	Dprintf("Found %d packages in primary_db\n", len(packages))
-
-	// build a list of missing packages
-	Dprintf("Checking for existing packages in %s...\n", packagedir)
-	missing := make([]yum.PackageEntry, 0)
-	for _, p := range packages {
-		package_filename := filepath.Base(p.LocationHref())
-		package_path := filepath.Join(packagedir, filepath.Base(p.LocationHref()))
-
-		// search local files
-		found := false
-		for _, filename := range files {
-			if filename.Name() == package_filename {
-
-				// validate checksum
-				err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
-				if err == yum.ErrChecksumMismatch {
-					Errorf(err, "Existing file failed checksum validation for package %v", p)
-					break
-
-				} else if err != nil {
-					Errorf(err, "Error validating checksum for package %v", p)
-					break
-
-				}
-
-				// valid package found
-				found = true
-				break
-			}
-		}
-
-		// TODO: filter packages according to Yumfile rules
-
-		if !found {
-			missing = append(missing, p)
-		}
-	}
-
-	Dprintf("Scheduled %d packages for download\n", len(missing))
-
-	// download missing packages
-	for i, p := range missing {
-		package_url := fmt.Sprintf("%s/%s", repo.BaseURL, p.LocationHref())
-		package_path := filepath.Join(packagedir, filepath.Base(p.LocationHref()))
-
-		// http request
-		Dprintf("[ %d / %d ] Downloading %v from %s...\n", i+1, len(missing), p, package_url)
-		resp, err := http.Get(package_url)
-		if err != nil {
-			Errorf(err, "Error downloading package %v", p)
-			continue
-		}
-		defer resp.Body.Close()
-
-		// check response code
-		if resp.StatusCode != http.StatusOK {
-			Errorf(nil, "Bad response code downloading package %v: %s", p, resp.Status)
-			continue
-		}
-
-		// open local file for writing
-		w, err := os.Create(package_path)
-		if err != nil {
-			Errorf(err, "Error opening %s for writing", package_path)
-			continue
-		}
-		defer w.Close()
-
-		// download
-		_, err = io.Copy(w, resp.Body)
-		if err != nil {
-			Errorf(err, "Error downloading %v", p)
-			continue
-		}
-		resp.Body.Close()
-		w.Close()
-
-		// validate checksum
-		err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
-		if err == yum.ErrChecksumMismatch {
-			Errorf(err, "Downloaded file failed checksum validation for package %v", p)
-			continue
-		} else if err != nil {
-			Errorf(err, "Error validating checksum for package %v", p)
-			continue
-		}
-	}
-
-	return nil
-
-}
-
 // Sync processes all repository mirrors defined in a Yumfile
 func (c *Yumfile) SyncRepos(repos []Repo) error {
 	// TODO: make sure cache path is always unique for all repos with same ID
 	for _, repo := range repos {
-		if err := c.SyncRepo(&repo); err != nil {
+		cachedir := filepath.Join(TmpYumCachePath, repo.ID)
+		packagedir := filepath.Join(c.LocalPathPrefix, repo.LocalPath)
+		if err := repo.Sync(cachedir, packagedir); err != nil {
 			Errorf(err, "Error synchronizing repo %v", repo)
 		}
 	}
