@@ -14,34 +14,34 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 	"xi2.org/x/xz"
 )
 
 // Repo is a package repository defined in a Yumfile
 type Repo struct {
+	ID             string
+	Name           string
 	Architecture   string
 	BaseURL        string
 	CachePath      string
 	Checksum       string
 	DeleteRemoved  bool
-	EnablePlugins  bool
 	GPGCheck       bool
 	Groupfile      string
-	ID             string
 	IncludeSources bool
 	LocalPath      string
 	MirrorURL      string
 	NewOnly        bool
-	Parameters     map[string]string
+	MaxDate        time.Time
+	MinDate        time.Time
 	YumfileLineNo  int
 	YumfilePath    string
 }
 
 // NewRepo initializes a new Repo struct and returns a pointer to it.
 func NewRepo() *Repo {
-	return &Repo{
-		Parameters: make(map[string]string, 0),
-	}
+	return &Repo{}
 }
 
 func (c Repo) String() string {
@@ -337,7 +337,7 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 
 	// cache repo metadata locally to TmpYumCachePath
 	if err := c.CacheLocal(cachedir); err != nil {
-		return fmt.Errorf("Failed to cache metadata for repo %v", c)
+		return fmt.Errorf("Failed to cache metadata for repo %v: %v", c, err)
 	}
 
 	// create package directory
@@ -469,6 +469,20 @@ func (c *Repo) FilterPackages(packages yum.PackageEntries) yum.PackageEntries {
 		// filter by architecture
 		if c.Architecture != "" {
 			if p.Architecture() != c.Architecture {
+				include = false
+			}
+		}
+
+		// filter by minimum build date
+		if !c.MinDate.IsZero() {
+			if p.BuildTime().Before(c.MinDate) {
+				include = false
+			}
+		}
+
+		// filter by maximum build date
+		if !c.MaxDate.IsZero() {
+			if p.BuildTime().After(c.MaxDate) {
 				include = false
 			}
 		}

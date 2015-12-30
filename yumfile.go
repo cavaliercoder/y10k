@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
+	"time"
 )
 
 type Yumfile struct {
@@ -24,6 +26,15 @@ var (
 	keyValPattern      = regexp.MustCompile("^(\\w+)\\s*=\\s*(.*)")
 	commentPattern     = regexp.MustCompile("(^$)|(^\\s+$)|(^#)|(^;)")
 )
+
+var timeFormats = []string{
+	time.RFC822,
+	time.RFC822Z,
+	time.RFC3339,
+	time.Stamp,
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04:05",
+}
 
 // LoadYumfile loads a Yumfile from disk
 func LoadYumfile(path string) (*Yumfile, error) {
@@ -78,6 +89,9 @@ func LoadYumfile(path string) (*Yumfile, error) {
 			} else {
 				// add key/val to current repo
 				switch key {
+				case "name":
+					repo.Name = val
+
 				case "baseurl":
 					repo.BaseURL = val
 
@@ -116,9 +130,6 @@ func LoadYumfile(path string) (*Yumfile, error) {
 						return nil, NewErrorf("Syntax error in Yumfile on line %d: %v", n, err)
 					} else {
 						repo.GPGCheck = b
-
-						// pass through to yum
-						repo.Parameters[key] = val
 					}
 
 				case "checksum":
@@ -127,8 +138,22 @@ func LoadYumfile(path string) (*Yumfile, error) {
 				case "groupfile":
 					repo.Groupfile = val
 
+				case "maxdate":
+					if t, err := strToTime(val); err != nil {
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %v", n, err)
+					} else {
+						repo.MaxDate = t
+					}
+
+				case "mindate":
+					if t, err := strToTime(val); err != nil {
+						return nil, NewErrorf("Syntax error in Yumfile on line %d: %v", n, err)
+					} else {
+						repo.MinDate = t
+					}
+
 				default:
-					repo.Parameters[key] = val
+					return nil, NewErrorf("Unknown directive '%s' in Yumfile on line %d", key, n)
 				}
 			}
 		} else if !commentPattern.MatchString(s) {
@@ -212,4 +237,20 @@ func strToBool(s string) (bool, error) {
 	}
 
 	return false, NewErrorf("Invalid boolean value: %s", s)
+}
+
+func strToTime(s string) (time.Time, error) {
+	// parse unix timestamp
+	if i, err := strconv.ParseInt(s, 10, 64); err == nil {
+		return time.Unix(i, 0), nil
+	}
+
+	// parse timestamp string
+	for _, f := range timeFormats {
+		if t, err := time.Parse(f, s); err == nil {
+			return t, nil
+		}
+	}
+
+	return time.Time{}, fmt.Errorf("Invalid timestamp value: %s", s)
 }
