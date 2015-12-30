@@ -17,7 +17,8 @@ get-deps:
 	$(GO) get github.com/cavaliercoder/go-rpm
 	$(GO) get github.com/codegangsta/cli
 	$(GO) get github.com/mattn/go-sqlite3
-	$(go) get xi2.org/x/xz
+	$(GO) get github.com/pivotal-golang/bytefmt
+	$(GO) get xi2.org/x/xz
 
 tar: $(APP) README.md
 	mkdir $(PACKAGE)

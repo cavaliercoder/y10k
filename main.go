@@ -18,6 +18,7 @@ var (
 	TmpYumConfPath  string
 	TmpYumLogFile   string
 	TmpYumCachePath string
+	DownloadThreads int
 )
 
 func main() {
@@ -51,6 +52,10 @@ func main() {
 			Usage:  "path to y10k cache",
 			Value:  "/var/cache/y10k",
 			EnvVar: "Y10K_CACHEDIR",
+		},
+		cli.IntFlag{
+			Name:  "threads, t",
+			Usage: "maximum simultanious downloads",
 		},
 	}
 
@@ -107,6 +112,11 @@ func main() {
 		TmpYumConfPath = filepath.Join(TmpBasePath, "yum.conf")
 		TmpYumLogFile = filepath.Join(TmpBasePath, "yum.log")
 		TmpYumCachePath = TmpBasePath
+
+		DownloadThreads = context.GlobalInt("threads")
+		if DownloadThreads == 0 {
+			DownloadThreads = 5
+		}
 
 		// configure logging
 		InitLogFile()

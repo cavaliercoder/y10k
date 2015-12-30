@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"github.com/cavaliercoder/go-rpm/yum"
+	"github.com/pivotal-golang/bytefmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -42,7 +43,7 @@ func NewRepo() *Repo {
 	}
 }
 
-func (c *Repo) String() string {
+func (c Repo) String() string {
 	return c.ID
 }
 
@@ -367,6 +368,7 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	// build a list of missing packages
 	Dprintf("Checking for existing packages in %s...\n", packagedir)
 	missing := make([]yum.PackageEntry, 0)
+	var totalsize uint64 = 0
 	for _, p := range packages {
 		package_filename := filepath.Base(p.LocationHref())
 		package_path := filepath.Join(packagedir, filepath.Base(p.LocationHref()))
@@ -398,58 +400,27 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 
 		if !found {
 			missing = append(missing, p)
+			totalsize += uint64(p.PackageSize())
 		}
 	}
 
-	Dprintf("Scheduled %d packages for download\n", len(missing))
+	Dprintf("Scheduled %d packages for download (%s)\n", len(missing), bytefmt.ByteSize(totalsize))
+
+	// schedule download jobs
+	jobs := make([]DownloadJob, len(missing))
+	for i, p := range missing {
+		// create download job
+		jobs[i] = DownloadJob{
+			Label:        p.String(),
+			URL:          fmt.Sprintf("%s/%s", c.BaseURL, p.LocationHref()),
+			Path:         filepath.Join(packagedir, filepath.Base(p.LocationHref())),
+			Checksum:     p.Checksum(),
+			ChecksumType: p.ChecksumType(),
+		}
+	}
 
 	// download missing packages
-	for i, p := range missing {
-		package_url := fmt.Sprintf("%s/%s", c.BaseURL, p.LocationHref())
-		package_path := filepath.Join(packagedir, filepath.Base(p.LocationHref()))
-
-		// http request
-		Dprintf("[ %d / %d ] Downloading %v from %s...\n", i+1, len(missing), p, package_url)
-		resp, err := http.Get(package_url)
-		if err != nil {
-			Errorf(err, "Error downloading package %v", p)
-			continue
-		}
-		defer resp.Body.Close()
-
-		// check response code
-		if resp.StatusCode != http.StatusOK {
-			Errorf(nil, "Bad response code downloading package %v: %s", p, resp.Status)
-			continue
-		}
-
-		// open local file for writing
-		w, err := os.Create(package_path)
-		if err != nil {
-			Errorf(err, "Error opening %s for writing", package_path)
-			continue
-		}
-		defer w.Close()
-
-		// download
-		_, err = io.Copy(w, resp.Body)
-		if err != nil {
-			Errorf(err, "Error downloading %v", p)
-			continue
-		}
-		resp.Body.Close()
-		w.Close()
-
-		// validate checksum
-		err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
-		if err == yum.ErrChecksumMismatch {
-			Errorf(err, "Downloaded file failed checksum validation for package %v", p)
-			continue
-		} else if err != nil {
-			Errorf(err, "Error validating checksum for package %v", p)
-			continue
-		}
-	}
+	Download(jobs)
 
 	return nil
 }

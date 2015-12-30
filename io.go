@@ -1,12 +1,13 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
+	"github.com/cavaliercoder/go-rpm/yum"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 )
 
 const (
@@ -21,6 +22,15 @@ var (
 	logfileHandle *os.File    = nil
 	logger        *log.Logger = nil
 )
+
+type DownloadJob struct {
+	Label        string
+	URL          string
+	Path         string
+	Checksum     string
+	ChecksumType string
+	Index        int
+}
 
 func InitLogFile() {
 	if LogFilePath == "" {
@@ -103,58 +113,80 @@ func Dprintf(format string, a ...interface{}) {
 	}
 }
 
-// Exec executes a system command and redirects the commands output to debug
-func Exec(path string, args ...string) error {
-	if cmd != nil {
-		return NewErrorf("Child process is aleady running (%s:%d)", cmd.Path, cmd.Process.Pid)
+// Download downloads multiple files asynchronously.
+func Download(jobs []DownloadJob) error {
+	if len(jobs) == 0 {
+		return nil
 	}
 
-	cmd = exec.Command(path, args...)
-	defer func() {
-		cmd = nil
-	}()
+	consumers := DownloadThreads
 
-	// parse stdout async
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return err
-	}
-
+	// start producer
+	c := make(chan DownloadJob, 0)
 	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			Dprintf("%s: %s\n", cmd.Path, scanner.Text())
+		for i, job := range jobs {
+			job.Index = i + 1
+			c <- job
 		}
+		close(c)
 	}()
 
-	// attach to stderr
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return err
+	// start consumers
+	done := make(chan bool, 0)
+	for i := 0; i < consumers; i++ {
+		go func() {
+			for job := range c {
+				// http request
+				Dprintf("[ %d / %d ] Downloading %s from %s...\n", job.Index, len(jobs), job.Label, job.URL)
+				resp, err := http.Get(job.URL)
+				if err != nil {
+					Errorf(err, "Error downloading %s", job.Label)
+					continue
+				}
+				defer resp.Body.Close()
+
+				// check response code
+				if resp.StatusCode != http.StatusOK {
+					Errorf(nil, "Bad response code downloading %s: %s", job.Label, resp.Status)
+					continue
+				}
+
+				// open local file for writing
+				w, err := os.Create(job.Path)
+				if err != nil {
+					Errorf(err, "Error opening %s for writing", job.Path)
+					continue
+				}
+				defer w.Close()
+
+				// download
+				_, err = io.Copy(w, resp.Body)
+				if err != nil {
+					Errorf(err, "Error downloading %s", job.Label)
+					continue
+				}
+				resp.Body.Close()
+				w.Close()
+
+				// validate checksum
+				err = yum.ValidateFileChecksum(job.Path, job.Checksum, job.ChecksumType)
+				if err == yum.ErrChecksumMismatch {
+					Errorf(err, "Downloaded file failed checksum validation for %s", job.Label)
+					continue
+				} else if err != nil {
+					Errorf(err, "Error validating checksum for %s", job.Label)
+					continue
+				}
+			}
+
+			done <- true
+		}()
 	}
 
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			Dprintf("%s: %s\n", cmd.Path, scanner.Text())
-		}
-	}()
-
-	// execute
-	Dprintf("exec: %s %s\n", path, strings.Join(args, " "))
-	err = cmd.Start()
-	if err != nil {
-		return err
+	// wait for consumers to finish
+	for i := 0; i < consumers; i++ {
+		<-done
 	}
-	Dprintf("exec: started with PID: %d\n", cmd.Process.Pid)
-
-	// wait for process to finish
-	err = cmd.Wait()
-	if err != nil {
-		return err
-	}
-	Dprintf("exec: finished\n")
-	cmd = nil
 
 	return nil
 }
