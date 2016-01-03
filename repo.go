@@ -124,7 +124,7 @@ func (c *Repo) cacheMetadata(cachedir string) (*yum.RepoMetadata, error) {
 	// TODO: add support for repository mirror lists
 
 	// TODO: prevent double forward-slash in URL joins
-	repomd_url := fmt.Sprintf("%s/repodata/repomd.xml", c.BaseURL)
+	repomd_url := URLJoin(c.BaseURL, "/repodata/repomd.xml")
 	repomd_path := filepath.Join(cachedir, "repomd.xml")
 
 	// open repo metadata from URL
@@ -189,7 +189,7 @@ func (c *Repo) cacheMetadata(cachedir string) (*yum.RepoMetadata, error) {
 // primary_db or filelists_db) to the given cache directory.
 func (c *Repo) downloadDatabase(cachedir string, db *yum.RepoDatabase) (string, error) {
 	// parse db paths
-	db_url := fmt.Sprintf("%s/%s", c.BaseURL, db.Location.Href)
+	db_url := URLJoin(c.BaseURL, db.Location.Href)
 	db_path := filepath.Join(cachedir, filepath.Base(db.Location.Href))
 
 	// check cached database
@@ -416,7 +416,7 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 		// create download job
 		jobs[i] = DownloadJob{
 			Label:        p.String(),
-			URL:          fmt.Sprintf("%s/%s", c.BaseURL, p.LocationHref()),
+			URL:          URLJoin(c.BaseURL, p.LocationHref()),
 			Path:         filepath.Join(packagedir, filepath.Base(p.LocationHref())),
 			Checksum:     p.Checksum(),
 			ChecksumType: p.ChecksumType(),

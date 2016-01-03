@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 )
 
 const (
@@ -109,6 +110,22 @@ func Dprintf(format string, a ...interface{}) {
 			Logf(LOG_CAT_DEBUG, format, a...)
 		}
 	}
+}
+
+// URLJoin naively joins paths of a URL to enforce a single '/' separator
+// between each segment.
+func URLJoin(v ...string) string {
+	url := ""
+
+	for _, s := range v {
+		if url == "" {
+			url = s
+		} else if s != "" {
+			url = fmt.Sprintf("%s/%s", strings.TrimRight(url, "/"), strings.TrimLeft(s, "/"))
+		}
+	}
+
+	return url
 }
 
 // Download downloads multiple files asynchronously.
