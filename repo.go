@@ -8,6 +8,7 @@ import (
 	"github.com/cavaliercoder/go-rpm"
 	"github.com/cavaliercoder/go-rpm/yum"
 	"github.com/pivotal-golang/bytefmt"
+	"golang.org/x/crypto/openpgp"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -28,6 +29,7 @@ type Repo struct {
 	Checksum       string
 	DeleteRemoved  bool
 	GPGCheck       bool
+	GPGKey         string
 	Groupfile      string
 	IncludeSources bool
 	LocalPath      string
@@ -124,7 +126,7 @@ func (c *Repo) cacheMetadata(cachedir string) (*yum.RepoMetadata, error) {
 	// TODO: add support for repository mirror lists
 
 	// TODO: prevent double forward-slash in URL joins
-	repomd_url := URLJoin(c.BaseURL, "/repodata/repomd.xml")
+	repomd_url := urljoin(c.BaseURL, "/repodata/repomd.xml")
 	repomd_path := filepath.Join(cachedir, "repomd.xml")
 
 	// open repo metadata from URL
@@ -189,7 +191,7 @@ func (c *Repo) cacheMetadata(cachedir string) (*yum.RepoMetadata, error) {
 // primary_db or filelists_db) to the given cache directory.
 func (c *Repo) downloadDatabase(cachedir string, db *yum.RepoDatabase) (string, error) {
 	// parse db paths
-	db_url := URLJoin(c.BaseURL, db.Location.Href)
+	db_url := urljoin(c.BaseURL, db.Location.Href)
 	db_path := filepath.Join(cachedir, filepath.Base(db.Location.Href))
 
 	// check cached database
@@ -334,6 +336,16 @@ func (c *Repo) decompressDatabase(cachedir string, path string, db *yum.RepoData
 // filter rules defined for the repository in its parent Yumfile. All repository
 // metadata is cached in the given cache directory.
 func (c *Repo) Sync(cachedir, packagedir string) error {
+	var err error
+
+	// load gpg keys
+	var keyring openpgp.KeyRing
+	if c.GPGCheck {
+		keyring, err = c.keyring()
+		if err != nil {
+			return err
+		}
+	}
 
 	// cache repo metadata locally to TmpYumCachePath
 	if err := c.CacheLocal(cachedir); err != nil {
@@ -416,7 +428,8 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 		// create download job
 		jobs[i] = DownloadJob{
 			Label:        p.String(),
-			URL:          URLJoin(c.BaseURL, p.LocationHref()),
+			URL:          urljoin(c.BaseURL, p.LocationHref()),
+			Size:         uint64(p.PackageSize()),
 			Path:         filepath.Join(packagedir, filepath.Base(p.LocationHref())),
 			Checksum:     p.Checksum(),
 			ChecksumType: p.ChecksumType(),
@@ -424,7 +437,31 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	}
 
 	// download missing packages
-	Download(jobs)
+	complete := make(chan DownloadJob, 0)
+	go Download(jobs, complete)
+
+	// handle each finished package
+	// TODO: create more gpgcheck threads
+	for job := range complete {
+		// open downloaded package for reading
+		f, err := os.Open(job.Path)
+		if err != nil {
+			Errorf(err, "Error reading %s for GPG check", job.Label)
+		} else {
+			defer f.Close()
+
+			// gpg check
+			_, err = rpm.GPGCheck(f, keyring)
+			if err != nil {
+				Errorf(err, "GPG check validation failed for %s", job.Label)
+
+				// delete bad package
+				if err := os.Remove(job.Path); err != nil {
+					Errorf(err, "Error deleting %v", job.Label)
+				}
+			}
+		}
+	}
 
 	return nil
 }
@@ -490,8 +527,32 @@ func (c *Repo) FilterPackages(packages yum.PackageEntries) yum.PackageEntries {
 		// append to output
 		if include {
 			filtered = append(filtered, p)
+		} else {
+			Dprintf("Exluding: %v\n", p)
 		}
 	}
 
 	return filtered
+}
+
+// keyring returns the GPG keyring for the given gpgkey file.
+func (c *Repo) keyring() (openpgp.KeyRing, error) {
+	gpgkey := c.GPGKey
+
+	// check gpgkey is specified
+	if gpgkey == "" {
+		return nil, fmt.Errorf("gpgkey not specified")
+	}
+
+	// trim file:// prefix
+	if strings.HasPrefix(strings.ToLower(gpgkey), "file://") {
+		gpgkey = gpgkey[7:]
+	}
+
+	keyring, err := rpm.KeyRingFromFile(gpgkey)
+	if err != nil {
+		return nil, fmt.Errorf("Error reading GPG key: %v", err)
+	}
+
+	return keyring, nil
 }

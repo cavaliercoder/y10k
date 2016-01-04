@@ -132,6 +132,9 @@ func LoadYumfile(path string) (*Yumfile, error) {
 						repo.GPGCheck = b
 					}
 
+				case "gpgkey":
+					repo.GPGKey = val
+
 				case "checksum":
 					repo.Checksum = val
 

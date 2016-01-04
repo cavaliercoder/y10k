@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/cavaliercoder/go-rpm/yum"
+	"github.com/pivotal-golang/bytefmt"
 	"io"
 	"log"
 	"net/http"
@@ -25,6 +26,7 @@ var (
 type DownloadJob struct {
 	Label        string
 	URL          string
+	Size         uint64
 	Path         string
 	Checksum     string
 	ChecksumType string
@@ -114,7 +116,7 @@ func Dprintf(format string, a ...interface{}) {
 
 // URLJoin naively joins paths of a URL to enforce a single '/' separator
 // between each segment.
-func URLJoin(v ...string) string {
+func urljoin(v ...string) string {
 	url := ""
 
 	for _, s := range v {
@@ -129,10 +131,20 @@ func URLJoin(v ...string) string {
 }
 
 // Download downloads multiple files asynchronously.
-func Download(jobs []DownloadJob) error {
+func Download(jobs []DownloadJob, complete chan<- DownloadJob) error {
+	// always close complete channel
+	defer func() {
+		if complete != nil {
+			close(complete)
+		}
+	}()
+
+	// exit if no jobs
 	if len(jobs) == 0 {
 		return nil
 	}
+
+	// TODO: delete partially downloaded files on SIGINT
 
 	consumers := DownloadThreads
 
@@ -151,8 +163,9 @@ func Download(jobs []DownloadJob) error {
 	for i := 0; i < consumers; i++ {
 		go func() {
 			for job := range c {
+
 				// http request
-				Dprintf("[ %d / %d ] Downloading %s from %s...\n", job.Index, len(jobs), job.Label, job.URL)
+				Dprintf("[ %d / %d ] Downloading %s (%s)...\n", job.Index, len(jobs), job.Label, bytefmt.ByteSize(job.Size))
 				resp, err := http.Get(job.URL)
 				if err != nil {
 					Errorf(err, "Error downloading %s", job.Label)
@@ -191,6 +204,11 @@ func Download(jobs []DownloadJob) error {
 				} else if err != nil {
 					Errorf(err, "Error validating checksum for %s", job.Label)
 					continue
+				}
+
+				// update caller
+				if complete != nil {
+					complete <- job
 				}
 			}
 
