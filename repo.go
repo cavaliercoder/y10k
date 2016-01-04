@@ -9,7 +9,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -94,7 +93,7 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	// load gpg keys
 	var keyring openpgp.KeyRing
 	if c.GPGCheck {
-		keyring, err = c.keyring()
+		keyring, err = OpenKeyRing(c.GPGKey)
 		if err != nil {
 			return err
 		}
@@ -131,7 +130,7 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	}
 
 	// filter list
-	packages = c.FilterPackages(packages)
+	packages = FilterPackages(c, packages)
 	Dprintf("Found %d packages in primary_db\n", len(packages))
 
 	// build a list of missing packages
@@ -221,95 +220,4 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	}
 
 	return nil
-}
-
-// FilterPackages returns a list of packages filtered according the repo's
-// settings.
-func (c *Repo) FilterPackages(packages yum.PackageEntries) yum.PackageEntries {
-	newest := make(map[string]*yum.PackageEntry, 0)
-
-	// calculate which packages are the latest
-	if c.NewOnly {
-		for i, p := range packages {
-			// index on name and architecture
-			id := fmt.Sprint("%s.%s", p.Name(), p.Architecture())
-
-			// lookup previous index
-			if n, ok := newest[id]; ok {
-				// compare version with previous index
-				if 1 == rpm.VersionCompare(rpm.Package(&p), rpm.Package(n)) {
-					newest[id] = &packages[i]
-				}
-			} else {
-				// add new index for this package
-				newest[id] = &packages[i]
-			}
-		}
-
-		// replace packages with only the latest packages
-		i := 0
-		packages = make(yum.PackageEntries, len(newest))
-		for _, p := range newest {
-			packages[i] = *p
-			i++
-		}
-	}
-
-	// filter the package list
-	filtered := make(yum.PackageEntries, 0)
-	for _, p := range packages {
-		include := true
-
-		// filter by architecture
-		if c.Architecture != "" {
-			if p.Architecture() != c.Architecture {
-				include = false
-			}
-		}
-
-		// filter by minimum build date
-		if !c.MinDate.IsZero() {
-			if p.BuildTime().Before(c.MinDate) {
-				include = false
-			}
-		}
-
-		// filter by maximum build date
-		if !c.MaxDate.IsZero() {
-			if p.BuildTime().After(c.MaxDate) {
-				include = false
-			}
-		}
-
-		// append to output
-		if include {
-			filtered = append(filtered, p)
-		} else {
-			Dprintf("Exluding: %v\n", p)
-		}
-	}
-
-	return filtered
-}
-
-// keyring returns the GPG keyring for the given gpgkey file.
-func (c *Repo) keyring() (openpgp.KeyRing, error) {
-	gpgkey := c.GPGKey
-
-	// check gpgkey is specified
-	if gpgkey == "" {
-		return nil, fmt.Errorf("gpgkey not specified")
-	}
-
-	// trim file:// prefix
-	if strings.HasPrefix(strings.ToLower(gpgkey), "file://") {
-		gpgkey = gpgkey[7:]
-	}
-
-	keyring, err := rpm.KeyRingFromFile(gpgkey)
-	if err != nil {
-		return nil, fmt.Errorf("Error reading GPG key: %v", err)
-	}
-
-	return keyring, nil
 }

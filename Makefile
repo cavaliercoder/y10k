@@ -10,7 +10,7 @@ TAR = tar
 
 all: $(APP)
 
-$(APP): main.go io.go repo.go yumfile.go
+$(APP): main.go cache.go filter.go gpg.go io.go repo.go repocache.go yumfile.go
 	$(GO) build -x -o $(APP)
 
 get-deps:
