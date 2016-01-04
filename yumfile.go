@@ -214,9 +214,8 @@ func (c *Yumfile) GetRepoByID(id string) *Repo {
 func (c *Yumfile) SyncRepos(repos []Repo) error {
 	// TODO: make sure cache path is always unique for all repos with same ID
 	for _, repo := range repos {
-		cachedir := filepath.Join(TmpYumCachePath, repo.ID)
 		packagedir := filepath.Join(c.LocalPathPrefix, repo.LocalPath)
-		if err := repo.Sync(cachedir, packagedir); err != nil {
+		if err := repo.Sync(TmpYumCachePath, packagedir); err != nil {
 			Errorf(err, "Error synchronizing repo %v", repo)
 		}
 	}

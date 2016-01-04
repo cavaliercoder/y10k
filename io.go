@@ -31,6 +31,7 @@ type DownloadJob struct {
 	Checksum     string
 	ChecksumType string
 	Index        int
+	Error        error
 }
 
 func InitLogFile() {
@@ -146,8 +147,6 @@ func Download(jobs []DownloadJob, complete chan<- DownloadJob) error {
 
 	// TODO: delete partially downloaded files on SIGINT
 
-	consumers := DownloadThreads
-
 	// start producer
 	c := make(chan DownloadJob, 0)
 	go func() {
@@ -160,55 +159,60 @@ func Download(jobs []DownloadJob, complete chan<- DownloadJob) error {
 
 	// start consumers
 	done := make(chan bool, 0)
-	for i := 0; i < consumers; i++ {
+	for i := 0; i < DownloadThreads; i++ {
 		go func() {
 			for job := range c {
 
 				// http request
 				Dprintf("[ %d / %d ] Downloading %s (%s)...\n", job.Index, len(jobs), job.Label, bytefmt.ByteSize(job.Size))
-				resp, err := http.Get(job.URL)
-				if err != nil {
-					Errorf(err, "Error downloading %s", job.Label)
-					continue
-				}
-				defer resp.Body.Close()
+				if resp, err := http.Get(job.URL); err != nil {
+					job.Error = err
+					goto JobDone
 
-				// check response code
-				if resp.StatusCode != http.StatusOK {
-					Errorf(nil, "Bad response code downloading %s: %s", job.Label, resp.Status)
-					continue
-				}
+				} else {
+					defer resp.Body.Close()
 
-				// open local file for writing
-				w, err := os.Create(job.Path)
-				if err != nil {
-					Errorf(err, "Error opening %s for writing", job.Path)
-					continue
-				}
-				defer w.Close()
+					// check response code
+					if resp.StatusCode != http.StatusOK {
+						job.Error = fmt.Errorf("Bad status: %v", resp.Status)
+						goto JobDone
+					}
 
-				// download
-				_, err = io.Copy(w, resp.Body)
-				if err != nil {
-					Errorf(err, "Error downloading %s", job.Label)
-					continue
+					// open local file for writing
+					if w, err := os.Create(job.Path); err != nil {
+						job.Error = err
+						goto JobDone
+
+					} else {
+						defer w.Close()
+
+						// download
+						_, err = io.Copy(w, resp.Body)
+						if err != nil {
+							job.Error = err
+							goto JobDone
+						}
+					}
 				}
-				resp.Body.Close()
-				w.Close()
 
 				// validate checksum
-				err = yum.ValidateFileChecksum(job.Path, job.Checksum, job.ChecksumType)
-				if err == yum.ErrChecksumMismatch {
-					Errorf(err, "Downloaded file failed checksum validation for %s", job.Label)
-					continue
+				if err := yum.ValidateFileChecksum(job.Path, job.Checksum, job.ChecksumType); err == yum.ErrChecksumMismatch {
+					job.Error = err
+					goto JobDone
+
 				} else if err != nil {
-					Errorf(err, "Error validating checksum for %s", job.Label)
-					continue
+					job.Error = fmt.Errorf("Checksum validation error: %v", err)
+					goto JobDone
 				}
 
-				// update caller
+			JobDone:
+
+				// update caller or print any errors
 				if complete != nil {
 					complete <- job
+
+				} else if job.Error != nil {
+					Errorf(job.Error, "Error downloading %v", job.Label)
 				}
 			}
 
@@ -217,7 +221,7 @@ func Download(jobs []DownloadJob, complete chan<- DownloadJob) error {
 	}
 
 	// wait for consumers to finish
-	for i := 0; i < consumers; i++ {
+	for i := 0; i < DownloadThreads; i++ {
 		<-done
 	}
 
