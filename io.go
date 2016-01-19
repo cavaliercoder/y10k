@@ -2,13 +2,12 @@ package main
 
 import (
 	"fmt"
-	"github.com/cavaliercoder/go-rpm/yum"
+	"github.com/cavaliercoder/grab"
 	"github.com/pivotal-golang/bytefmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 const (
@@ -22,17 +21,6 @@ var (
 	logfileHandle *os.File    = nil
 	logger        *log.Logger = nil
 )
-
-type DownloadJob struct {
-	Label        string
-	URL          string
-	Size         uint64
-	Path         string
-	Checksum     string
-	ChecksumType string
-	Index        int
-	Error        error
-}
 
 func InitLogFile() {
 	if LogFilePath == "" {
@@ -131,99 +119,72 @@ func urljoin(v ...string) string {
 	return url
 }
 
-// Download downloads multiple files asynchronously.
-func Download(jobs []DownloadJob, complete chan<- DownloadJob) error {
-	// always close complete channel
-	defer func() {
-		if complete != nil {
-			close(complete)
-		}
-	}()
+// download transfers multiple file requests simultaneously and sends the
+// responses through the returned channel once each transfer is complete.
+func download(reqs []*grab.Request, workers int) <-chan *grab.Response {
+	ret := make(chan *grab.Response, workers)
 
-	// exit if no jobs
-	if len(jobs) == 0 {
-		return nil
-	}
-
-	// TODO: delete partially downloaded files on SIGINT
-
-	// start producer
-	c := make(chan DownloadJob, 0)
 	go func() {
-		for i, job := range jobs {
-			job.Index = i + 1
-			c <- job
-		}
-		close(c)
-	}()
+		// timer to udpate display and progress
+		ticker := time.NewTicker(time.Millisecond * 200)
+		defer ticker.Stop()
 
-	// start consumers
-	done := make(chan bool, 0)
-	for i := 0; i < DownloadThreads; i++ {
-		go func() {
-			for job := range c {
+		// client to download files
+		respch := grab.DefaultClient.DoBatch(workers, reqs...)
 
-				// http request
-				Dprintf("[ %d / %d ] Downloading %s (%s)...\n", job.Index, len(jobs), job.Label, bytefmt.ByteSize(job.Size))
-				if resp, err := http.Get(job.URL); err != nil {
-					job.Error = err
-					goto JobDone
+		// progress indicators
+		completed := 0
+		inProgress := 0
+		responses := make([]*grab.Response, 0)
 
-				} else {
-					defer resp.Body.Close()
+		// loop until done
+		for completed < len(reqs) {
+			select {
+			case resp := <-respch:
+				// response received. add to watch list.
+				if resp != nil {
+					responses = append(responses, resp)
+				}
 
-					// check response code
-					if resp.StatusCode != http.StatusOK {
-						job.Error = fmt.Errorf("Bad status: %v", resp.Status)
-						goto JobDone
-					}
+			case <-ticker.C:
+				// clear lines
+				if inProgress > 0 {
+					fmt.Printf("\033[%dA\033[K", inProgress)
+				}
 
-					// open local file for writing
-					if w, err := os.Create(job.Path); err != nil {
-						job.Error = err
-						goto JobDone
-
-					} else {
-						defer w.Close()
-
-						// download
-						_, err = io.Copy(w, resp.Body)
-						if err != nil {
-							job.Error = err
-							goto JobDone
+				// update completed downloads
+				for i, resp := range responses {
+					if resp != nil && resp.IsComplete() {
+						// print final result
+						if resp.Error != nil {
+							fmt.Fprintf(os.Stderr, "Error downloading %s: %v\033[K\n", resp.Request.Label, resp.Error)
+						} else {
+							fmt.Printf("Finished %s (%s in %v)\033[K\n", resp.Request.Label, bytefmt.ByteSize(resp.BytesTransferred()), resp.Duration())
 						}
+
+						// mark completed
+						responses[i] = nil
+						completed++
+
+						// ship to caller
+						ret <- resp
 					}
 				}
 
-				// validate checksum
-				if err := yum.ValidateFileChecksum(job.Path, job.Checksum, job.ChecksumType); err == yum.ErrChecksumMismatch {
-					job.Error = err
-					goto JobDone
-
-				} else if err != nil {
-					job.Error = fmt.Errorf("Checksum validation error: %v", err)
-					goto JobDone
-				}
-
-			JobDone:
-
-				// update caller or print any errors
-				if complete != nil {
-					complete <- job
-
-				} else if job.Error != nil {
-					Errorf(job.Error, "Error downloading %v", job.Label)
+				// update downloads in progress
+				inProgress = 0
+				for _, resp := range responses {
+					if resp != nil {
+						inProgress++
+						fmt.Printf("Downloading %s (%d%% of %s)...\033[K\n", resp.Request.Label, int(100*resp.Progress()), bytefmt.ByteSize(resp.Size))
+					}
 				}
 			}
+		}
 
-			done <- true
-		}()
-	}
+		// close receiver channel
+		close(ret)
+	}()
 
-	// wait for consumers to finish
-	for i := 0; i < DownloadThreads; i++ {
-		<-done
-	}
-
-	return nil
+	return ret
 }

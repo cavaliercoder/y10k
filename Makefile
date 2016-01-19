@@ -15,8 +15,9 @@ $(APP): main.go cache.go filter.go gpg.go io.go repo.go repocache.go yumfile.go
 
 get-deps:
 	$(GO) get github.com/cavaliercoder/go-rpm
-	$(GO) get github.com/mattn/go-sqlite3
+	$(GO) get github.com/cavaliercoder/grab
 	$(GO) get github.com/codegangsta/cli
+	$(GO) get github.com/mattn/go-sqlite3
 	$(GO) get github.com/pivotal-golang/bytefmt
 	$(GO) get xi2.org/x/xz
 

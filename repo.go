@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/cavaliercoder/go-rpm"
 	"github.com/cavaliercoder/go-rpm/yum"
+	"github.com/cavaliercoder/grab"
 	"github.com/pivotal-golang/bytefmt"
 	"golang.org/x/crypto/openpgp"
 	"io/ioutil"
@@ -143,24 +145,33 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 
 		// search local files
 		found := false
-		for _, filename := range files {
-			if filename.Name() == package_filename {
+		for _, fi := range files {
+			// find file for package
+			if fi.Name() == package_filename {
+				// check file size
+				if fi.Size() == p.PackageSize() {
+					// validate checksum
+					err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
+					if err == yum.ErrChecksumMismatch {
+						Errorf(err, "Existing file failed checksum validation for package %v", p)
+						break
 
-				// validate checksum
-				err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
-				if err == yum.ErrChecksumMismatch {
-					Errorf(err, "Existing file failed checksum validation for package %v", p)
+					} else if err != nil {
+						Errorf(err, "Error validating checksum for package %v", p)
+						break
+					}
+
+					// valid package found
+					found = true
 					break
 
-				} else if err != nil {
-					Errorf(err, "Error validating checksum for package %v", p)
+				} else if fi.Size() > p.PackageSize() {
+					// existing file is too large (smaller is okay)
+					Errorf(err, "Existing file is larger (%s) than expected (%s) for package %v", bytefmt.ByteSize(uint64(fi.Size())), bytefmt.ByteSize(uint64(p.PackageSize())), p)
 					break
-
+				} else {
+					Dprintf("Existing file is incomplete for package %v\n", p)
 				}
-
-				// valid package found
-				found = true
-				break
 			}
 		}
 
@@ -175,44 +186,55 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	Dprintf("Scheduled %d packages for download (%s)\n", len(missing), bytefmt.ByteSize(totalsize))
 
 	// schedule download jobs
-	jobs := make([]DownloadJob, len(missing))
+	reqs := make([]*grab.Request, 0)
 	for i, p := range missing {
-		// create download job
-		jobs[i] = DownloadJob{
-			Label:        p.String(),
-			URL:          urljoin(c.BaseURL, p.LocationHref()),
-			Size:         uint64(p.PackageSize()),
-			Path:         filepath.Join(packagedir, filepath.Base(p.LocationHref())),
-			Checksum:     p.Checksum(),
-			ChecksumType: p.ChecksumType(),
+		req, err := grab.NewRequest(urljoin(c.BaseURL, p.LocationHref()))
+		if err != nil {
+			Errorf(err, "Error requesting package %v", p)
+		} else {
+			req.Label = fmt.Sprintf("[ %d / %d ] %v", i+1, len(missing), p)
+
+			req.Filename = filepath.Join(packagedir, filepath.Base(p.LocationHref()))
+
+			req.Size = uint64(p.PackageSize())
+
+			sum, err := hex.DecodeString(p.Checksum())
+			if err != nil {
+				Errorf(err, "Error reading checksum for package %v", p)
+			} else {
+				req.SetChecksum(p.ChecksumType(), sum)
+				reqs = append(reqs, req)
+			}
 		}
 	}
 
 	// download missing packages
-	complete := make(chan DownloadJob, 0)
-	go Download(jobs, complete)
+	responses := download(reqs, DownloadThreads)
 
 	// handle each finished package
-	// TODO: create more gpgcheck threads
-	for job := range complete {
-		if job.Error != nil {
-			Errorf(job.Error, "Error downloading %s", job.Label)
+	for resp := range responses {
+		if resp.Error != nil {
+			Errorf(resp.Error, "Error downloading %s", resp.Request.Label)
 		} else {
-			// open downloaded package for reading
-			f, err := os.Open(job.Path)
-			if err != nil {
-				Errorf(err, "Error reading %s for GPG check", job.Label)
-			} else {
-				defer f.Close()
-
-				// gpg check
-				_, err = rpm.GPGCheck(f, keyring)
+			// gpg check
+			// TODO: create more gpgcheck threads
+			if c.GPGCheck {
+				// open downloaded package for reading
+				f, err := os.Open(resp.Filename)
 				if err != nil {
-					Errorf(err, "GPG check validation failed for %s", job.Label)
+					Errorf(err, "Error reading %s for GPG check", resp.Request.Label)
+				} else {
+					defer f.Close()
 
-					// delete bad package
-					if err := os.Remove(job.Path); err != nil {
-						Errorf(err, "Error deleting %v", job.Label)
+					// gpg check
+					_, err = rpm.GPGCheck(f, keyring)
+					if err != nil {
+						Errorf(err, "GPG check validation failed for %s", resp.Request.Label)
+
+						// delete bad package
+						if err := os.Remove(resp.Filename); err != nil {
+							Errorf(err, "Error deleting %v", resp.Request.Label)
+						}
 					}
 				}
 			}
