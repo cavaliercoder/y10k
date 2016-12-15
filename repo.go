@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/cavaliercoder/go-rpm"
-	"github.com/cavaliercoder/go-rpm/yum"
 	"github.com/cavaliercoder/grab"
+	"github.com/cavaliercoder/y10k/yum"
 	"github.com/pivotal-golang/bytefmt"
 	"golang.org/x/crypto/openpgp"
 	"io/ioutil"
@@ -151,7 +151,13 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 				// check file size
 				if fi.Size() == p.PackageSize() {
 					// validate checksum
-					err = yum.ValidateFileChecksum(package_path, p.Checksum(), p.ChecksumType())
+					sum, err := p.Checksum()
+					if err != nil {
+						Errorf(err, "Failed to compute checksum for package %v", p)
+						break
+					}
+
+					err = yum.ValidateFileChecksum(package_path, sum, p.ChecksumType())
 					if err == yum.ErrChecksumMismatch {
 						Errorf(err, "Existing file failed checksum validation for package %v", p)
 						break
@@ -198,12 +204,17 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 
 			req.Size = uint64(p.PackageSize())
 
-			sum, err := hex.DecodeString(p.Checksum())
+			sum, err := p.Checksum()
 			if err != nil {
 				Errorf(err, "Error reading checksum for package %v", p)
 			} else {
-				req.SetChecksum(p.ChecksumType(), sum)
-				reqs = append(reqs, req)
+				b, err := hex.DecodeString(sum)
+				if err != nil {
+					Errorf(err, "Error decoding checksum for package %p", p)
+				} else {
+					req.SetChecksum(p.ChecksumType(), b)
+					reqs = append(reqs, req)
+				}
 			}
 		}
 	}

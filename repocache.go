@@ -5,7 +5,7 @@ import (
 	"compress/bzip2"
 	"compress/gzip"
 	"fmt"
-	"github.com/cavaliercoder/go-rpm/yum"
+	"github.com/cavaliercoder/y10k/yum"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -115,8 +115,12 @@ func (c *RepoCache) updateMetadata() (*yum.RepoMetadata, error) {
 	// cache metadata locally
 	if update_mdcache {
 		Dprintf("Caching repo metadata to %s...\n", repomd_path)
+		if err = os.MkdirAll(c.Path, 0750); err != nil {
+			return nil, err
+		}
+
 		if err = ioutil.WriteFile(repomd_path, b, 0640); err != nil {
-			return nil, fmt.Errorf("Error caching repo metadata: %v", err)
+			return nil, err
 		}
 	}
 

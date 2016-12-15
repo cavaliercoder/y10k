@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/cavaliercoder/go-rpm"
-	"github.com/cavaliercoder/go-rpm/yum"
+	"github.com/cavaliercoder/y10k/yum"
 )
 
 // FilterPackages returns a list of packages filtered according the repo's
@@ -20,7 +20,7 @@ func FilterPackages(repo *Repo, packages yum.PackageEntries) yum.PackageEntries 
 			// lookup previous index
 			if n, ok := newest[id]; ok {
 				// compare version with previous index
-				if 1 == rpm.VersionCompare(rpm.Package(&p), rpm.Package(n)) {
+				if 1 == rpm.VersionCompare(rpm.PackageVersion(&p), rpm.PackageVersion(n)) {
 					newest[id] = &packages[i]
 				}
 			} else {
