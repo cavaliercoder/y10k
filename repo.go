@@ -256,22 +256,19 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 		defer w.Close()
 
 		// enumerate package dir
-		files, err = ioutil.ReadDir(packagedir)
+		files, err := filepath.Glob(filepath.Join(packagedir, "/*.rpm"))
 		if err != nil {
 			PanicOn(err)
 		}
 
 		// add to primary db
-		for _, fi := range files {
-			if fi.IsDir() {
-				continue
-			}
-
-			packagePath := filepath.Join(packagedir, fi.Name())
-			p, err := rpm.OpenPackageFile(packagePath)
+		Dprintf("Inserting %v packages\n", len(files))
+		for _, f := range files {
+			p, err := rpm.OpenPackageFile(f)
 			if err != nil {
 				PanicOn(err)
 			}
+
 			w.Write(p)
 		}
 	}

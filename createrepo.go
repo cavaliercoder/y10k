@@ -24,6 +24,8 @@ func (w PrimaryDatabaseWriter) Close() {
 //
 // `/repodata` is always appended to the given path.
 func createrepo(path string) (PrimaryDatabaseWriter, error) {
+	Dprintf("Creating new package repository: %v\n", path)
+
 	// create repodata directory
 	dbPath := filepath.Join(path, "/gen")
 	if err := os.MkdirAll(dbPath, 0755); err != nil {
@@ -37,16 +39,25 @@ func createrepo(path string) (PrimaryDatabaseWriter, error) {
 		return nil, err
 	}
 
+	// start a transaction
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+
 	// create package channel
 	w := make(chan *rpm.PackageFile, 0)
 	go func(w chan *rpm.PackageFile) {
+		defer func() {
+			tx.Commit()
+			db.Close()
+		}()
+
 		for p := range w {
 			if err := db.InsertPackage(p); err != nil {
 				Errorf(err, "Failed to insert %v", p)
 			}
 		}
-
-		// TODO: finalise database
 	}(w)
 
 	return w, nil

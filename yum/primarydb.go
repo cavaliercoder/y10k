@@ -52,7 +52,8 @@ const sqlSelectPackages = `SELECT
  , time_build
 FROM packages;`
 
-const sqlInsertPackage = `INSERT INTO packages(
+const (
+	sqlInsertPackage = `INSERT INTO packages(
  name
  , arch
  , epoch
@@ -79,9 +80,13 @@ const sqlInsertPackage = `INSERT INTO packages(
  , rpm_packager
 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
+	sqlInsertPackageFiles = `INSERT INTO files(name, type, pkgKey) VALUES (?, ?, ?);`
+)
+
 // PrimaryDatabase is an SQLite database which contains package data for a
 // yum package repository.
 type PrimaryDatabase struct {
+	db     *sql.DB
 	dbpath string
 }
 
@@ -94,7 +99,6 @@ func CreatePrimaryDB(path string) (*PrimaryDatabase, error) {
 	if err != nil {
 		return nil, fmt.Errorf("Error creating Primary DB: %v", err)
 	}
-	defer db.Close()
 
 	// create database tables
 	_, err = db.Exec(sqlCreateTables)
@@ -114,7 +118,10 @@ func CreatePrimaryDB(path string) (*PrimaryDatabase, error) {
 		return nil, fmt.Errorf("Error creating Primary DB triggers: %v", err)
 	}
 
-	return OpenPrimaryDB(path)
+	return &PrimaryDatabase{
+		db:     db,
+		dbpath: path,
+	}, nil
 }
 
 // OpenPrimaryDB opens a primary_db SQLite database from file and return a
@@ -125,29 +132,43 @@ func OpenPrimaryDB(path string) (*PrimaryDatabase, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer db.Close()
 
 	// TODO: Validate primary_db on open, maybe with the db_info table
 
 	return &PrimaryDatabase{
+		db:     db,
 		dbpath: path,
 	}, nil
 }
 
-func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
-	// open database file
-	db, err := sql.Open("sqlite3", c.dbpath)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
+func (c *PrimaryDatabase) Begin() (*sql.Tx, error) {
+	return c.db.Begin()
+}
 
-	stmt, err := db.Prepare(sqlInsertPackage)
+func (c *PrimaryDatabase) Close() error {
+	if c.db != nil {
+		return c.db.Close()
+	}
+
+	return nil
+}
+
+func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
+	// insert package
+	stmt, err := c.db.Prepare(sqlInsertPackage)
 	if err != nil {
 		return err
 	}
 
 	defer stmt.Close()
+
+	// insert files
+	stmtFiles, err := c.db.Prepare(sqlInsertPackageFiles)
+	if err != nil {
+		return err
+	}
+
+	defer stmtFiles.Close()
 
 	for _, p := range packages {
 		sum, err := p.Checksum()
@@ -156,7 +177,7 @@ func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
 		}
 
 		href := filepath.Base(p.Path())
-		_, err = stmt.Exec(
+		res, err := stmt.Exec(
 			p.Name(),
 			p.Architecture(),
 			p.Epoch(),
@@ -185,6 +206,17 @@ func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
 		if err != nil {
 			return err
 		}
+
+		i, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+
+		// insert files
+		files := p.Files()
+		for _, f := range files {
+			stmtFiles.Exec(f, "file", i)
+		}
 	}
 
 	return nil
@@ -192,15 +224,8 @@ func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
 
 // Packages returns all packages listed in the primary_db.
 func (c *PrimaryDatabase) Packages() (PackageEntries, error) {
-	// open database file
-	db, err := sql.Open("sqlite3", c.dbpath)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-
 	// select packages
-	rows, err := db.Query(sqlSelectPackages)
+	rows, err := c.db.Query(sqlSelectPackages)
 	if err != nil {
 		return nil, err
 	}
@@ -230,15 +255,8 @@ func (c *PrimaryDatabase) Packages() (PackageEntries, error) {
 func (c *PrimaryDatabase) DependenciesByPackage(pkgKey int, typ string) (rpm.Dependencies, error) {
 	q := fmt.Sprintf("SELECT name, flags, epoch, version, release FROM %s WHERE pkgKey = %d", typ, pkgKey)
 
-	// open database file
-	db, err := sql.Open("sqlite3", c.dbpath)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-
 	// select packages
-	rows, err := db.Query(q)
+	rows, err := c.db.Query(q)
 	if err != nil {
 		return nil, err
 	}
@@ -282,15 +300,8 @@ func (c *PrimaryDatabase) DependenciesByPackage(pkgKey int, typ string) (rpm.Dep
 func (c *PrimaryDatabase) FilesByPackage(pkgKey int) ([]string, error) {
 	q := fmt.Sprintf("SELECT name FROM files WHERE pkgKey = %d", pkgKey)
 
-	// open database file
-	db, err := sql.Open("sqlite3", c.dbpath)
-	if err != nil {
-		return nil, err
-	}
-	defer db.Close()
-
 	// select packages
-	rows, err := db.Query(q)
+	rows, err := c.db.Query(q)
 	if err != nil {
 		return nil, err
 	}

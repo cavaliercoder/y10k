@@ -17,6 +17,6 @@ func serve(path, addr string) {
 		fs.ServeHTTP(w, r)
 	})
 
-	Printf("Listening on %v\n", addr)
+	Printf("Serving %s on %v\n", path, addr)
 	http.ListenAndServe(addr, handler)
 }
