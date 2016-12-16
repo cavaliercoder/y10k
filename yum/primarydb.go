@@ -6,6 +6,8 @@ import (
 	"github.com/cavaliercoder/go-rpm"
 	_ "github.com/mattn/go-sqlite3"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 // TODO: Add support for XML primary dbs
@@ -50,6 +52,33 @@ const sqlSelectPackages = `SELECT
  , time_build
 FROM packages;`
 
+const sqlInsertPackage = `INSERT INTO packages(
+ name
+ , arch
+ , epoch
+ , version
+ , release
+ , summary
+ , description
+ , url
+ , size_package
+ , size_installed
+ , size_archive
+ , location_href
+ , pkgId
+ , checksum_type
+ , time_build
+ , rpm_license
+ , rpm_vendor
+ , rpm_group
+ , rpm_buildhost
+ , rpm_sourcerpm
+ , rpm_header_start
+ , rpm_header_end
+ , rpm_packager
+ , size_package
+) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
+
 // PrimaryDatabase is an SQLite database which contains package data for a
 // yum package repository.
 type PrimaryDatabase struct {
@@ -57,37 +86,35 @@ type PrimaryDatabase struct {
 }
 
 // CreatePrimaryDB initializes a new and empty primary_db SQLite database on
-// disk.
-func CreatePrimaryDB(path string) error {
+// disk. Any existing path is deleted.
+func CreatePrimaryDB(path string) (*PrimaryDatabase, error) {
 	// create database file
-	dbpath := "./primary_db.sqlite"
-	os.Remove(dbpath)
-
-	db, err := sql.Open("sqlite3", dbpath)
+	os.Remove(path)
+	db, err := sql.Open("sqlite3", path)
 	if err != nil {
-		return fmt.Errorf("Error creating Primary DB: %v", err)
+		return nil, fmt.Errorf("Error creating Primary DB: %v", err)
 	}
 	defer db.Close()
 
 	// create database tables
 	_, err = db.Exec(sqlCreateTables)
 	if err != nil {
-		return fmt.Errorf("Error creating Primary DB tables: %v", err)
+		return nil, fmt.Errorf("Error creating Primary DB tables: %v", err)
 	}
 
 	// create database indexes
 	_, err = db.Exec(sqlCreateIndexes)
 	if err != nil {
-		return fmt.Errorf("Error creating Primary DB indexes: %v", err)
+		return nil, fmt.Errorf("Error creating Primary DB indexes: %v", err)
 	}
 
 	// create database triggers
 	_, err = db.Exec(sqlCreateTriggers)
 	if err != nil {
-		return fmt.Errorf("Error creating Primary DB triggers: %v", err)
+		return nil, fmt.Errorf("Error creating Primary DB triggers: %v", err)
 	}
 
-	return nil
+	return OpenPrimaryDB(path)
 }
 
 // OpenPrimaryDB opens a primary_db SQLite database from file and return a
@@ -105,6 +132,63 @@ func OpenPrimaryDB(path string) (*PrimaryDatabase, error) {
 	return &PrimaryDatabase{
 		dbpath: path,
 	}, nil
+}
+
+func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
+	// open database file
+	db, err := sql.Open("sqlite3", c.dbpath)
+	if err != nil {
+		return err
+	}
+	defer db.Close()
+
+	stmt, err := db.Prepare(sqlInsertPackage)
+	if err != nil {
+		return err
+	}
+
+	defer stmt.Close()
+
+	for _, p := range packages {
+		sum, err := p.Checksum()
+		if err != nil {
+			return err
+		}
+
+		href := filepath.Base(p.Path())
+		_, err = stmt.Exec(
+			p.Name(),
+			p.Architecture(),
+			p.Epoch(),
+			p.Version(),
+			p.Release(),
+			p.Summary(),
+			p.Description(),
+			p.URL(),
+			0,
+			p.Size(),
+			p.ArchiveSize(),
+			href,
+			sum,
+			p.ChecksumType(),
+			p.BuildTime().Unix(),
+			p.License(),
+			p.Vendor(),
+			strings.Join(p.Groups(), "\n"),
+			p.BuildHost(),
+			p.SourceRPM(),
+			p.HeaderStart(),
+			p.HeaderEnd(),
+			p.Packager(),
+			p.FileSize())
+
+		fmt.Printf("%v\n", p.FileSize())
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Packages returns all packages listed in the primary_db.

@@ -1,4 +1,6 @@
+*.csv
 *.log
+*.sqlite
 *.tar.gz
 .sass-cache/
 .vagrant/

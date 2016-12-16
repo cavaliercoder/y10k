@@ -199,11 +199,8 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 			Errorf(err, "Error requesting package %v", p)
 		} else {
 			req.Label = fmt.Sprintf("[ %d / %d ] %v", i+1, len(missing), p)
-
 			req.Filename = filepath.Join(packagedir, filepath.Base(p.LocationHref()))
-
 			req.Size = uint64(p.PackageSize())
-
 			sum, err := p.Checksum()
 			if err != nil {
 				Errorf(err, "Error reading checksum for package %v", p)
@@ -249,6 +246,33 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 					}
 				}
 			}
+		}
+	}
+
+	// TODO: createrepo
+	if w, err := createrepo(filepath.Join(packagedir, "/repodata")); err != nil {
+		PanicOn(err)
+	} else {
+		defer w.Close()
+
+		// enumerate package dir
+		files, err = ioutil.ReadDir(packagedir)
+		if err != nil {
+			PanicOn(err)
+		}
+
+		// add to primary db
+		for _, fi := range files {
+			if fi.IsDir() {
+				continue
+			}
+
+			packagePath := filepath.Join(packagedir, fi.Name())
+			p, err := rpm.OpenPackageFile(packagePath)
+			if err != nil {
+				PanicOn(err)
+			}
+			w.Write(p)
 		}
 	}
 
