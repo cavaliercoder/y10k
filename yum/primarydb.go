@@ -61,6 +61,7 @@ const sqlInsertPackage = `INSERT INTO packages(
  , summary
  , description
  , url
+ , time_file
  , size_package
  , size_installed
  , size_archive
@@ -76,7 +77,6 @@ const sqlInsertPackage = `INSERT INTO packages(
  , rpm_header_start
  , rpm_header_end
  , rpm_packager
- , size_package
 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
 // PrimaryDatabase is an SQLite database which contains package data for a
@@ -165,7 +165,8 @@ func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
 			p.Summary(),
 			p.Description(),
 			p.URL(),
-			0,
+			p.FileTime().Unix(),
+			p.FileSize(),
 			p.Size(),
 			p.ArchiveSize(),
 			href,
@@ -179,10 +180,8 @@ func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
 			p.SourceRPM(),
 			p.HeaderStart(),
 			p.HeaderEnd(),
-			p.Packager(),
-			p.FileSize())
+			p.Packager())
 
-		fmt.Printf("%v\n", p.FileSize())
 		if err != nil {
 			return err
 		}
