@@ -93,6 +93,18 @@ func main() {
 			},
 		},
 		{
+			Name:  "serve",
+			Usage: "naive directory index server",
+			Flags: []cli.Flag{
+				cli.StringFlag{
+					Name:  "listen, l",
+					Usage: "listen address",
+					Value: ":8080",
+				},
+			},
+			Action: ActionServe,
+		},
+		{
 			Name:  "version",
 			Usage: "print the version of y10k",
 			Action: func(context *cli.Context) {
@@ -178,6 +190,16 @@ func ActionYumfileSync(context *cli.Context) {
 			Fatalf(err, "Error syncronizing repo '%s'", mirror.ID)
 		}
 	}
+}
+
+func ActionServe(context *cli.Context) {
+	addr := context.String("listen")
+	path := context.Args().First()
+	if path == "" {
+		path = "."
+	}
+
+	serve(path, addr)
 }
 
 func PanicOn(err error) {
