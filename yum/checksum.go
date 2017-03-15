@@ -35,6 +35,15 @@ func (c *RepoDatabaseChecksum) CheckFile(name string) error {
 	return ValidateFileChecksum(name, c.Hash, c.Type)
 }
 
+func Sha256Sum(r io.Reader) (string, error) {
+	s := sha256.New()
+	if _, err := io.Copy(s, r); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(s.Sum(nil)), nil
+}
+
 // ValidateChecksum creates a checksum of the given io.Reader content and
 // compares it the the given checksum value. If the checksums match, nil is
 // returned. If the checksums do not match, ErrChecksumMismatch is returned. If
@@ -42,14 +51,13 @@ func (c *RepoDatabaseChecksum) CheckFile(name string) error {
 func ValidateChecksum(r io.Reader, checksum string, checksum_type string) error {
 	// get checksum value based by type
 	actual := ""
+	var err error
 	switch checksum_type {
 	case "sha256":
-		s := sha256.New()
-		if _, err := io.Copy(s, r); err != nil {
+		actual, err = Sha256Sum(r)
+		if err != nil {
 			return err
 		}
-
-		actual = hex.EncodeToString(s.Sum(nil))
 
 	default:
 		return fmt.Errorf("Unsupported checksum type: %s", checksum_type)

@@ -53,7 +53,7 @@ func (c *RepoCache) Update() error {
 	return nil
 }
 
-func (c *RepoCache) PrimaryDB() (*yum.PrimaryDatabase, error) {
+func (c *RepoCache) PrimaryDB() (*yum.PrimaryDB, error) {
 	path := filepath.Join(c.Path, "gen/primary_db.sqlite")
 	return yum.OpenPrimaryDB(path)
 }

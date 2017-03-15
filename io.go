@@ -72,7 +72,7 @@ func Printf(format string, a ...interface{}) {
 func Errorf(err error, format string, a ...interface{}) {
 	if logger == nil {
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "ERROR: %s: %s\n", fmt.Sprintf(format, a...), err.Error())
+			fmt.Fprintf(os.Stderr, "ERROR: %s: %+v\n", fmt.Sprintf(format, a...), err)
 		} else {
 			fmt.Fprintf(os.Stderr, "ERROR: %s\n", fmt.Sprintf(format, a...))
 		}

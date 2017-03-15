@@ -1,5 +1,15 @@
 package yum
 
+import (
+	"github.com/cavaliercoder/go-rpm"
+)
+
+type PackageDatabase interface {
+	AddPackage(*rpm.PackageFile) error
+	Metadata() (*RepoDatabase, error)
+	Close() error
+}
+
 // RepoDatabase represents an entry in a repository metadata file for an
 // individual database file such as primary_db or filelists_db.
 type RepoDatabase struct {

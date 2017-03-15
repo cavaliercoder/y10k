@@ -7,10 +7,13 @@ import (
 	"github.com/cavaliercoder/grab"
 	"github.com/cavaliercoder/y10k/yum"
 	"github.com/pivotal-golang/bytefmt"
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/openpgp"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
+	"sync"
 	"time"
 )
 
@@ -189,7 +192,11 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 		}
 	}
 
-	Dprintf("Scheduled %d packages for download (%s)\n", len(missing), bytefmt.ByteSize(totalsize))
+	if len(missing) == 0 {
+		Dprintf("No packages scheduled for download\n")
+	} else {
+		Dprintf("Scheduled %d packages for download (%s)\n", len(missing), bytefmt.ByteSize(totalsize))
+	}
 
 	// schedule download jobs
 	reqs := make([]*grab.Request, 0)
@@ -249,29 +256,74 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 		}
 	}
 
-	// TODO: createrepo
-	if w, err := createrepo(filepath.Join(packagedir, "/repodata")); err != nil {
-		PanicOn(err)
-	} else {
-		defer w.Close()
+	// createrepo
+	PanicOn(c.UpdateDB(packagedir))
 
-		// enumerate package dir
-		files, err := filepath.Glob(filepath.Join(packagedir, "/*.rpm"))
-		if err != nil {
-			PanicOn(err)
-		}
+	return nil
+}
 
-		// add to primary db
-		Dprintf("Inserting %v packages\n", len(files))
-		for _, f := range files {
-			p, err := rpm.OpenPackageFile(f)
-			if err != nil {
-				PanicOn(err)
-			}
-
-			w.Write(p)
-		}
+// UpdateDB creates or updates all databases and metadata for a package
+// repository.
+//
+// Analogous to the `createrepo` command.
+//
+// `/repodata` is always appended to the given path and packages are considered
+// to be relative to this path.
+func (c *Repo) UpdateDB(path string) error {
+	// init repo file structure
+	repo := yum.NewRepo(path)
+	if err := repo.Bootstrap(); err != nil {
+		return errors.Wrap(err, "error bootstrapping repository")
 	}
+
+	// enumerate package dir
+	glob := filepath.Join(path, "/*.rpm")
+	files, err := filepath.Glob(glob)
+	if err != nil {
+		return errors.Wrapf(err, "error globbing %v", glob)
+	}
+	Dprintf("Found %v packages matching %v\n", len(files), glob)
+
+	// TODO: filter and GPG check packages here
+
+	// start workers
+	ch := make(chan *rpm.PackageFile)
+	workerCount := runtime.NumCPU()
+	wg := &sync.WaitGroup{}
+	wg.Add(workerCount)
+
+	Dprintf("Starting %v workers\n", workerCount)
+	for i := 0; i < workerCount; i++ {
+		go func(worker int) {
+			defer wg.Done()
+
+			for p := range ch {
+				Dprintf("[worker %v] added %v\n", worker, p)
+				if err := repo.AddPackage(p); err != nil {
+					Errorf(err, "[worker %v] error adding package %v", worker, p)
+					// TODO: signal parent that an error occurred
+				}
+			}
+		}(i + 1)
+	}
+
+	// send packages to ch
+	for _, f := range files {
+		p, err := rpm.OpenPackageFile(f)
+		if err != nil {
+			return errors.Wrapf(err, "failed to open package %v", f)
+		}
+		ch <- p
+	}
+
+	close(ch)
+	wg.Wait()
+
+	if err := repo.Close(); err != nil {
+		return errors.Wrap(err, "error finalising repository databases")
+	}
+
+	Printf("Created repository: %v\n", c)
 
 	return nil
 }

@@ -42,6 +42,7 @@ func (c *RepoMetadata) Write(w io.Writer) error {
 	c.XMLNSRPM = "http://linux.duke.edu/metadata/rpm"
 
 	encoder := xml.NewEncoder(w)
+	encoder.Indent("", "  ")
 	err := encoder.Encode(c)
 	if err != nil {
 		return fmt.Errorf("Error encoding repository metadata: %v", err)

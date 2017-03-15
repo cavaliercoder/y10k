@@ -8,7 +8,7 @@ import (
 
 // PackageEntry is a RPM package as defined in a yum repository database.
 type PackageEntry struct {
-	db *PrimaryDatabase
+	db *PrimaryDB
 
 	key           int
 	architecture  string

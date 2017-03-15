@@ -10,15 +10,17 @@ TAR = tar
 
 all: $(APP)
 
-$(APP): main.go cache.go filter.go gpg.go io.go repo.go repocache.go yumfile.go
+$(APP): *.go yum/*.go
 	$(GO) build -x -o $(APP)
 
 get-deps:
 	$(GO) get github.com/cavaliercoder/go-rpm
 	$(GO) get github.com/cavaliercoder/grab
 	$(GO) get github.com/codegangsta/cli
+	$(GO) get github.com/dsnet/compress
 	$(GO) get github.com/mattn/go-sqlite3
 	$(GO) get github.com/pivotal-golang/bytefmt
+	$(GO) get github.com/pkg/errors
 	$(GO) get xi2.org/x/xz
 
 tar: $(APP) README.md

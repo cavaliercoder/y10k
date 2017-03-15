@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"github.com/cavaliercoder/go-rpm"
 	_ "github.com/mattn/go-sqlite3"
+	"io/ioutil"
 	"os"
 	"path/filepath"
-	"strings"
 )
 
 // TODO: Add support for XML primary dbs
@@ -52,47 +52,18 @@ const sqlSelectPackages = `SELECT
  , time_build
 FROM packages;`
 
-const (
-	sqlInsertPackage = `INSERT INTO packages(
- name
- , arch
- , epoch
- , version
- , release
- , summary
- , description
- , url
- , time_file
- , size_package
- , size_installed
- , size_archive
- , location_href
- , pkgId
- , checksum_type
- , time_build
- , rpm_license
- , rpm_vendor
- , rpm_group
- , rpm_buildhost
- , rpm_sourcerpm
- , rpm_header_start
- , rpm_header_end
- , rpm_packager
-) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
-
-	sqlInsertPackageFiles = `INSERT INTO files(name, type, pkgKey) VALUES (?, ?, ?);`
-)
-
-// PrimaryDatabase is an SQLite database which contains package data for a
+// PrimaryDB is an SQLite database which contains package data for a
 // yum package repository.
-type PrimaryDatabase struct {
-	db     *sql.DB
-	dbpath string
+type PrimaryDB struct {
+	db   *sql.DB
+	Path string
+
+	Bzip2Path string
 }
 
 // CreatePrimaryDB initializes a new and empty primary_db SQLite database on
 // disk. Any existing path is deleted.
-func CreatePrimaryDB(path string) (*PrimaryDatabase, error) {
+func NewPrimaryDB(path string) (*PrimaryDB, error) {
 	// create database file
 	os.Remove(path)
 	db, err := sql.Open("sqlite3", path)
@@ -118,15 +89,15 @@ func CreatePrimaryDB(path string) (*PrimaryDatabase, error) {
 		return nil, fmt.Errorf("Error creating Primary DB triggers: %v", err)
 	}
 
-	return &PrimaryDatabase{
-		db:     db,
-		dbpath: path,
+	return &PrimaryDB{
+		db:   db,
+		Path: path,
 	}, nil
 }
 
 // OpenPrimaryDB opens a primary_db SQLite database from file and return a
 // pointer to the resulting struct.
-func OpenPrimaryDB(path string) (*PrimaryDatabase, error) {
+func OpenPrimaryDB(path string) (*PrimaryDB, error) {
 	// open database file
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
@@ -135,95 +106,38 @@ func OpenPrimaryDB(path string) (*PrimaryDatabase, error) {
 
 	// TODO: Validate primary_db on open, maybe with the db_info table
 
-	return &PrimaryDatabase{
-		db:     db,
-		dbpath: path,
+	return &PrimaryDB{
+		db:   db,
+		Path: path,
 	}, nil
 }
 
-func (c *PrimaryDatabase) Begin() (*sql.Tx, error) {
-	return c.db.Begin()
+func (c *PrimaryDB) String() string {
+	return "primary_db"
 }
 
-func (c *PrimaryDatabase) Close() error {
-	if c.db != nil {
-		return c.db.Close()
+func (c *PrimaryDB) Close() error {
+	// TODO: commit inflight transaction
+
+	// bzip it
+	if c.Bzip2Path != "" {
+		if bzip2Path, err := c.Bzip2Compress(c.Bzip2Path); err != nil {
+			return err
+		} else {
+			c.Bzip2Path = bzip2Path
+		}
 	}
 
-	return nil
+	return c.db.Close()
 }
 
-func (c *PrimaryDatabase) InsertPackage(packages ...*rpm.PackageFile) error {
-	// insert package
-	stmt, err := c.db.Prepare(sqlInsertPackage)
-	if err != nil {
-		return err
-	}
-
-	defer stmt.Close()
-
-	// insert files
-	stmtFiles, err := c.db.Prepare(sqlInsertPackageFiles)
-	if err != nil {
-		return err
-	}
-
-	defer stmtFiles.Close()
-
-	for _, p := range packages {
-		sum, err := p.Checksum()
-		if err != nil {
-			return err
-		}
-
-		href := filepath.Base(p.Path())
-		res, err := stmt.Exec(
-			p.Name(),
-			p.Architecture(),
-			p.Epoch(),
-			p.Version(),
-			p.Release(),
-			p.Summary(),
-			p.Description(),
-			p.URL(),
-			p.FileTime().Unix(),
-			p.FileSize(),
-			p.Size(),
-			p.ArchiveSize(),
-			href,
-			sum,
-			p.ChecksumType(),
-			p.BuildTime().Unix(),
-			p.License(),
-			p.Vendor(),
-			strings.Join(p.Groups(), "\n"),
-			p.BuildHost(),
-			p.SourceRPM(),
-			p.HeaderStart(),
-			p.HeaderEnd(),
-			p.Packager())
-
-		if err != nil {
-			return err
-		}
-
-		i, err := res.LastInsertId()
-		if err != nil {
-			return err
-		}
-
-		// insert files
-		files := p.Files()
-		for _, f := range files {
-			stmtFiles.Exec(f, "file", i)
-		}
-	}
-
-	return nil
+func (c *PrimaryDB) Begin() (*PrimaryDBTx, error) {
+	tx, err := c.db.Begin()
+	return &PrimaryDBTx{tx}, err
 }
 
 // Packages returns all packages listed in the primary_db.
-func (c *PrimaryDatabase) Packages() (PackageEntries, error) {
+func (c *PrimaryDB) Packages() (PackageEntries, error) {
 	// select packages
 	rows, err := c.db.Query(sqlSelectPackages)
 	if err != nil {
@@ -252,7 +166,7 @@ func (c *PrimaryDatabase) Packages() (PackageEntries, error) {
 // DependenciesByPackage returns all package dependencies of the given type for
 // the given package key. The dependency type may be one of 'requires',
 // 'provides', 'conflicts' or 'obsoletes'.
-func (c *PrimaryDatabase) DependenciesByPackage(pkgKey int, typ string) (rpm.Dependencies, error) {
+func (c *PrimaryDB) DependenciesByPackage(pkgKey int, typ string) (rpm.Dependencies, error) {
 	q := fmt.Sprintf("SELECT name, flags, epoch, version, release FROM %s WHERE pkgKey = %d", typ, pkgKey)
 
 	// select packages
@@ -297,7 +211,7 @@ func (c *PrimaryDatabase) DependenciesByPackage(pkgKey int, typ string) (rpm.Dep
 
 // FilesByPackage returns all known files included in the package of the given
 // package key.
-func (c *PrimaryDatabase) FilesByPackage(pkgKey int) ([]string, error) {
+func (c *PrimaryDB) FilesByPackage(pkgKey int) ([]string, error) {
 	q := fmt.Sprintf("SELECT name FROM files WHERE pkgKey = %d", pkgKey)
 
 	// select packages
@@ -319,4 +233,115 @@ func (c *PrimaryDatabase) FilesByPackage(pkgKey int) ([]string, error) {
 	}
 
 	return files, nil
+}
+
+func (c *PrimaryDB) AddPackage(p *rpm.PackageFile) error {
+	// TODO: add package inside transaction
+	return nil
+}
+
+// dst must be a directory
+func (c *PrimaryDB) Bzip2Compress(dst string) (string, error) {
+	// compress to temp file and return path
+	tmpfile, err := func() (string, error) {
+		f, err := os.Open(c.Path)
+		if err != nil {
+			return "", err
+		}
+		defer f.Close()
+
+		// open temp file for writing
+		tmp, err := ioutil.TempFile("", c.String())
+		if err != nil {
+			return "", err
+		}
+		defer tmp.Close()
+
+		// compress
+		if err := Bzip2Compress(tmp, f); err != nil {
+			return "", err
+		}
+
+		return tmp.Name(), nil
+	}()
+
+	if err != nil {
+		return "", err
+	}
+
+	// get sha256 sum
+	sum, err := func() (string, error) {
+		tmp, err := os.Open(tmpfile)
+		if err != nil {
+			return "", err
+		}
+		defer tmp.Close()
+
+		return Sha256Sum(tmp)
+	}()
+
+	if err != nil {
+		return "", err
+	}
+
+	// move bzipped db into place
+	bzpath := filepath.Join(dst, "/", sum+"-primary.sqlite.bz2")
+	if err := os.Rename(tmpfile, bzpath); err != nil {
+		return "", err
+	}
+	c.Bzip2Path = bzpath
+
+	return c.Bzip2Path, nil
+}
+
+func (c *PrimaryDB) Metadata() (*RepoDatabase, error) {
+	// TODO: raise error if bzip2 not run
+	location := filepath.Join("repodata/", filepath.Base(c.Bzip2Path))
+	m := &RepoDatabase{
+		Type:            c.String(),
+		DatabaseVersion: 10,
+		Location:        RepoDatabaseLocation{location},
+	}
+
+	// open pdb
+	f, err := os.Open(c.Path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	fi, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	sum, err := Sha256Sum(f)
+	if err != nil {
+		return nil, err
+	}
+
+	m.OpenSize = int(fi.Size())
+	m.OpenChecksum = RepoDatabaseChecksum{"sha256", sum}
+
+	// do it again for bzipped version
+	f.Close()
+	f, err = os.Open(c.Bzip2Path)
+	if err != nil {
+		return nil, err
+	}
+
+	fi, err = f.Stat()
+	if err != nil {
+		return nil, err
+	}
+
+	sum, err = Sha256Sum(f)
+	if err != nil {
+		return nil, err
+	}
+
+	m.Size = int(fi.Size())
+	m.Checksum = RepoDatabaseChecksum{"sha256", sum}
+
+	return m, nil
 }
