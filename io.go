@@ -1,9 +1,9 @@
 package main
 
 import (
+	"code.cloudfoundry.org/bytefmt"
 	"fmt"
 	"github.com/cavaliercoder/grab"
-	"github.com/pivotal-golang/bytefmt"
 	"log"
 	"os"
 	"strings"

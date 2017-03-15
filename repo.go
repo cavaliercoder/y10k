@@ -1,12 +1,12 @@
 package main
 
 import (
+	"code.cloudfoundry.org/bytefmt"
 	"encoding/hex"
 	"fmt"
 	"github.com/cavaliercoder/go-rpm"
 	"github.com/cavaliercoder/grab"
 	"github.com/cavaliercoder/y10k/yum"
-	"github.com/pivotal-golang/bytefmt"
 	"github.com/pkg/errors"
 	"golang.org/x/crypto/openpgp"
 	"io/ioutil"

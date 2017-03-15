@@ -19,7 +19,7 @@ get-deps:
 	$(GO) get github.com/codegangsta/cli
 	$(GO) get github.com/dsnet/compress
 	$(GO) get github.com/mattn/go-sqlite3
-	$(GO) get github.com/pivotal-golang/bytefmt
+	$(GO) get code.cloudfoundry.org/bytefmt
 	$(GO) get github.com/pkg/errors
 	$(GO) get xi2.org/x/xz
 
