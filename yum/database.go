@@ -4,31 +4,33 @@ import (
 	"github.com/cavaliercoder/go-rpm"
 )
 
-type PackageDatabase interface {
-	AddPackage(*rpm.PackageFile) error
-	Metadata() (*RepoDatabase, error)
+// DB is one of multiple possible databases in a Yum repository.
+type DB interface {
+	// Name is the type of database as it appears in repomd.xml (E.g.
+	// "primary_db")
+	Name() string
+
+	// File is file path of the uncompressed database file.
+	Path() string
+
+	// Begin starts a transaction.
+	Begin() (Tx, error)
+
+	// Close closes the database, releasing any open resources. It should also
+	// repackage any assets for distribution (such as gzipping a modified XML
+	// document).
 	Close() error
 }
 
-// RepoDatabase represents an entry in a repository metadata file for an
-// individual database file such as primary_db or filelists_db.
-type RepoDatabase struct {
-	Type            string               `xml:"type,attr"`
-	Location        RepoDatabaseLocation `xml:"location"`
-	Timestamp       int                  `xml:"timestamp"`
-	Size            int                  `xml:"size"`
-	Checksum        RepoDatabaseChecksum `xml:"checksum"`
-	OpenSize        int                  `xml:"open-size"`
-	OpenChecksum    RepoDatabaseChecksum `xml:"open-checksum"`
-	DatabaseVersion int                  `xml:"database_version"`
-}
+// Tx is an in-progress database transaction.
+// A transaction must end with a call to Commit or Rollback.
+type Tx interface {
+	// Commit commits the transaction.
+	Commit() error
 
-// RepoDatabaseLocation represents the URI, relative to a package repository,
-// of a repository database.
-type RepoDatabaseLocation struct {
-	Href string `xml:"href,attr"`
-}
+	// Rollback aborts the transaction.
+	Rollback() error
 
-func (c *RepoDatabase) String() string {
-	return c.Type
+	// Add new RPM packages to the database.
+	AddPackage(...*rpm.PackageFile) error
 }

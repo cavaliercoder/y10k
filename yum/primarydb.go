@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"github.com/cavaliercoder/go-rpm"
 	_ "github.com/mattn/go-sqlite3"
-	"io/ioutil"
 	"os"
-	"path/filepath"
+	"sync"
 )
 
 // TODO: Add support for XML primary dbs
@@ -52,24 +51,31 @@ const sqlSelectPackages = `SELECT
  , time_build
 FROM packages;`
 
+// global mutex to syncronize database writes to one thread at a time.
+var SqliteMutex = &sync.Mutex{}
+
 // PrimaryDB is an SQLite database which contains package data for a
 // yum package repository.
 type PrimaryDB struct {
 	db   *sql.DB
-	Path string
-
-	Bzip2Path string
+	path string
 }
 
 // CreatePrimaryDB initializes a new and empty primary_db SQLite database on
 // disk. Any existing path is deleted.
 func NewPrimaryDB(path string) (*PrimaryDB, error) {
 	// create database file
-	os.Remove(path)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return nil, err
+	}
+
 	db, err := sql.Open("sqlite3", path)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating Primary DB: %v", err)
 	}
+
+	SqliteMutex.Lock()
+	defer SqliteMutex.Unlock()
 
 	// create database tables
 	_, err = db.Exec(sqlCreateTables)
@@ -91,7 +97,7 @@ func NewPrimaryDB(path string) (*PrimaryDB, error) {
 
 	return &PrimaryDB{
 		db:   db,
-		Path: path,
+		path: path,
 	}, nil
 }
 
@@ -108,36 +114,46 @@ func OpenPrimaryDB(path string) (*PrimaryDB, error) {
 
 	return &PrimaryDB{
 		db:   db,
-		Path: path,
+		path: path,
 	}, nil
 }
 
+// String implements Stringer
 func (c *PrimaryDB) String() string {
+	return c.Name()
+}
+
+func (c *PrimaryDB) Name() string {
 	return "primary_db"
 }
 
+func (c *PrimaryDB) Path() string {
+	return c.path
+}
+
 func (c *PrimaryDB) Close() error {
-	// TODO: commit inflight transaction
-
-	// bzip it
-	if c.Bzip2Path != "" {
-		if bzip2Path, err := c.Bzip2Compress(c.Bzip2Path); err != nil {
-			return err
-		} else {
-			c.Bzip2Path = bzip2Path
-		}
-	}
-
+	SqliteMutex.Lock()
+	defer SqliteMutex.Unlock()
 	return c.db.Close()
 }
 
-func (c *PrimaryDB) Begin() (*PrimaryDBTx, error) {
+func (c *PrimaryDB) Begin() (Tx, error) {
+	SqliteMutex.Lock()
 	tx, err := c.db.Begin()
-	return &PrimaryDBTx{tx}, err
+	if err != nil {
+		SqliteMutex.Unlock()
+		return nil, err
+	}
+
+	SqliteMutex.Unlock() // before lock in NewPrimaryDBTx
+	return NewPrimaryDBTx(tx)
 }
 
 // Packages returns all packages listed in the primary_db.
 func (c *PrimaryDB) Packages() (PackageEntries, error) {
+	SqliteMutex.Lock()
+	defer SqliteMutex.Unlock()
+
 	// select packages
 	rows, err := c.db.Query(sqlSelectPackages)
 	if err != nil {
@@ -168,6 +184,9 @@ func (c *PrimaryDB) Packages() (PackageEntries, error) {
 // 'provides', 'conflicts' or 'obsoletes'.
 func (c *PrimaryDB) DependenciesByPackage(pkgKey int, typ string) (rpm.Dependencies, error) {
 	q := fmt.Sprintf("SELECT name, flags, epoch, version, release FROM %s WHERE pkgKey = %d", typ, pkgKey)
+
+	SqliteMutex.Lock()
+	defer SqliteMutex.Unlock()
 
 	// select packages
 	rows, err := c.db.Query(q)
@@ -214,6 +233,9 @@ func (c *PrimaryDB) DependenciesByPackage(pkgKey int, typ string) (rpm.Dependenc
 func (c *PrimaryDB) FilesByPackage(pkgKey int) ([]string, error) {
 	q := fmt.Sprintf("SELECT name FROM files WHERE pkgKey = %d", pkgKey)
 
+	SqliteMutex.Lock()
+	defer SqliteMutex.Unlock()
+
 	// select packages
 	rows, err := c.db.Query(q)
 	if err != nil {
@@ -233,115 +255,4 @@ func (c *PrimaryDB) FilesByPackage(pkgKey int) ([]string, error) {
 	}
 
 	return files, nil
-}
-
-func (c *PrimaryDB) AddPackage(p *rpm.PackageFile) error {
-	// TODO: add package inside transaction
-	return nil
-}
-
-// dst must be a directory
-func (c *PrimaryDB) Bzip2Compress(dst string) (string, error) {
-	// compress to temp file and return path
-	tmpfile, err := func() (string, error) {
-		f, err := os.Open(c.Path)
-		if err != nil {
-			return "", err
-		}
-		defer f.Close()
-
-		// open temp file for writing
-		tmp, err := ioutil.TempFile("", c.String())
-		if err != nil {
-			return "", err
-		}
-		defer tmp.Close()
-
-		// compress
-		if err := Bzip2Compress(tmp, f); err != nil {
-			return "", err
-		}
-
-		return tmp.Name(), nil
-	}()
-
-	if err != nil {
-		return "", err
-	}
-
-	// get sha256 sum
-	sum, err := func() (string, error) {
-		tmp, err := os.Open(tmpfile)
-		if err != nil {
-			return "", err
-		}
-		defer tmp.Close()
-
-		return Sha256Sum(tmp)
-	}()
-
-	if err != nil {
-		return "", err
-	}
-
-	// move bzipped db into place
-	bzpath := filepath.Join(dst, "/", sum+"-primary.sqlite.bz2")
-	if err := os.Rename(tmpfile, bzpath); err != nil {
-		return "", err
-	}
-	c.Bzip2Path = bzpath
-
-	return c.Bzip2Path, nil
-}
-
-func (c *PrimaryDB) Metadata() (*RepoDatabase, error) {
-	// TODO: raise error if bzip2 not run
-	location := filepath.Join("repodata/", filepath.Base(c.Bzip2Path))
-	m := &RepoDatabase{
-		Type:            c.String(),
-		DatabaseVersion: 10,
-		Location:        RepoDatabaseLocation{location},
-	}
-
-	// open pdb
-	f, err := os.Open(c.Path)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	fi, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	sum, err := Sha256Sum(f)
-	if err != nil {
-		return nil, err
-	}
-
-	m.OpenSize = int(fi.Size())
-	m.OpenChecksum = RepoDatabaseChecksum{"sha256", sum}
-
-	// do it again for bzipped version
-	f.Close()
-	f, err = os.Open(c.Bzip2Path)
-	if err != nil {
-		return nil, err
-	}
-
-	fi, err = f.Stat()
-	if err != nil {
-		return nil, err
-	}
-
-	sum, err = Sha256Sum(f)
-	if err != nil {
-		return nil, err
-	}
-
-	m.Size = int(fi.Size())
-	m.Checksum = RepoDatabaseChecksum{"sha256", sum}
-
-	return m, nil
 }

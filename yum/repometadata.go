@@ -18,6 +18,29 @@ type RepoMetadata struct {
 	Databases []RepoDatabase `xml:"data"`
 }
 
+// RepoDatabase represents an entry in a repository metadata file for an
+// individual database file such as primary_db or filelists_db.
+type RepoDatabase struct {
+	Type            string               `xml:"type,attr"`
+	Location        RepoDatabaseLocation `xml:"location"`
+	Timestamp       int64                `xml:"timestamp"`
+	Size            int                  `xml:"size"`
+	Checksum        RepoDatabaseChecksum `xml:"checksum"`
+	OpenSize        int                  `xml:"open-size"`
+	OpenChecksum    RepoDatabaseChecksum `xml:"open-checksum"`
+	DatabaseVersion int                  `xml:"database_version"`
+}
+
+// RepoDatabaseLocation represents the URI, relative to a package repository,
+// of a repository database.
+type RepoDatabaseLocation struct {
+	Href string `xml:"href,attr"`
+}
+
+func (c *RepoDatabase) String() string {
+	return c.Type
+}
+
 // ReadRepoMetadata loads a repomd.xml file from the given io.Reader and returns
 // a pointer to the resulting RepoMetadata struct.
 func ReadRepoMetadata(r io.Reader) (*RepoMetadata, error) {

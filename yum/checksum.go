@@ -1,9 +1,8 @@
 package yum
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
+	"github.com/cavaliercoder/y10k/yum/crypto"
 	"io"
 	"os"
 )
@@ -35,15 +34,6 @@ func (c *RepoDatabaseChecksum) CheckFile(name string) error {
 	return ValidateFileChecksum(name, c.Hash, c.Type)
 }
 
-func Sha256Sum(r io.Reader) (string, error) {
-	s := sha256.New()
-	if _, err := io.Copy(s, r); err != nil {
-		return "", err
-	}
-
-	return hex.EncodeToString(s.Sum(nil)), nil
-}
-
 // ValidateChecksum creates a checksum of the given io.Reader content and
 // compares it the the given checksum value. If the checksums match, nil is
 // returned. If the checksums do not match, ErrChecksumMismatch is returned. If
@@ -54,7 +44,7 @@ func ValidateChecksum(r io.Reader, checksum string, checksum_type string) error 
 	var err error
 	switch checksum_type {
 	case "sha256":
-		actual, err = Sha256Sum(r)
+		actual, err = crypto.NewSha256().Checksum(r)
 		if err != nil {
 			return err
 		}

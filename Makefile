@@ -5,23 +5,24 @@ PACKAGE = $(APP)-$(APPVER).$(ARCH)
 TARBALL = $(PACKAGE).tar.gz
 
 GO = go
+GOGET = $(GO) get -v -u
 RM = rm -f
 TAR = tar
 
 all: $(APP)
 
-$(APP): *.go yum/*.go
+$(APP): *.go yum/*.go yum/compress/*.go yum/crypto/*.go
 	$(GO) build -x -o $(APP)
 
 get-deps:
-	$(GO) get github.com/cavaliercoder/go-rpm
-	$(GO) get github.com/cavaliercoder/grab
-	$(GO) get github.com/codegangsta/cli
-	$(GO) get github.com/dsnet/compress
-	$(GO) get github.com/mattn/go-sqlite3
-	$(GO) get code.cloudfoundry.org/bytefmt
-	$(GO) get github.com/pkg/errors
-	$(GO) get xi2.org/x/xz
+	$(GOGET) github.com/cavaliercoder/go-rpm
+	$(GOGET) github.com/cavaliercoder/grab
+	$(GOGET) github.com/codegangsta/cli
+	$(GOGET) github.com/dsnet/compress
+	$(GOGET) github.com/mattn/go-sqlite3
+	$(GOGET) code.cloudfoundry.org/bytefmt
+	$(GOGET) github.com/pkg/errors
+	$(GOGET) xi2.org/x/xz
 
 tar: $(APP) README.md
 	mkdir $(PACKAGE)
@@ -31,7 +32,7 @@ tar: $(APP) README.md
 
 clean:
 	$(GO) clean
-	$(RM) -f $(APP) $(TARBALL)
+	$(RM) -f $(APP) $(TARBALL) debug
 
 docker-image:
 	docker build -t cavaliercoder/y10k .

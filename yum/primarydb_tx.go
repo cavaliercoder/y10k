@@ -2,6 +2,7 @@ package yum
 
 import (
 	"database/sql"
+	"fmt"
 	"github.com/cavaliercoder/go-rpm"
 	_ "github.com/mattn/go-sqlite3"
 	"path/filepath"
@@ -36,35 +37,52 @@ const (
  , rpm_packager
 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`
 
-	sqlInsertPackageFiles = `INSERT INTO files(name, type, pkgKey) VALUES (?, ?, ?);`
+	sqlInsertPackageFile = `INSERT INTO files(name, type, pkgKey) VALUES (?, ?, ?);`
 )
 
-// PrimaryDBTx is a database transaction opened on the primary database.
-type PrimaryDBTx struct {
-	tx *sql.Tx
+// primaryDBTx is a SQLite transaction opened on the primary database.
+type primaryDBTx struct {
+	tx            *sql.Tx
+	insertPackage *sql.Stmt
+	insertFile    *sql.Stmt
 }
 
-func (c *PrimaryDBTx) Commit() error {
+func NewPrimaryDBTx(tx *sql.Tx) (Tx, error) {
+	c := &primaryDBTx{tx, nil, nil}
+
+	SqliteMutex.Lock()
+	defer SqliteMutex.Unlock()
+
+	// prepare insert package query
+	if stmt, err := tx.Prepare(sqlInsertPackage); err != nil {
+		return nil, err
+	} else {
+		c.insertPackage = stmt
+	}
+
+	// prepare insert file query
+	if stmt, err := tx.Prepare(sqlInsertPackageFile); err != nil {
+		return nil, err
+	} else {
+		c.insertFile = stmt
+	}
+
+	return c, nil
+}
+
+func (c *primaryDBTx) Commit() error {
+	SqliteMutex.Lock()
+	defer SqliteMutex.Unlock()
 	return c.tx.Commit()
 }
 
-func (c *PrimaryDBTx) InsertPackage(packages ...*rpm.PackageFile) error {
-	// insert package
-	stmt, err := c.tx.Prepare(sqlInsertPackage)
-	if err != nil {
-		return err
-	}
+func (c *primaryDBTx) Rollback() error {
+	SqliteMutex.Lock()
+	defer SqliteMutex.Unlock()
+	return c.tx.Rollback()
+}
 
-	defer stmt.Close()
-
-	// insert files
-	stmtFiles, err := c.tx.Prepare(sqlInsertPackageFiles)
-	if err != nil {
-		return err
-	}
-
-	defer stmtFiles.Close()
-
+func (c *primaryDBTx) AddPackage(packages ...*rpm.PackageFile) error {
 	for _, p := range packages {
 		sum, err := p.Checksum()
 		if err != nil {
@@ -72,7 +90,11 @@ func (c *PrimaryDBTx) InsertPackage(packages ...*rpm.PackageFile) error {
 		}
 
 		href := filepath.Base(p.Path())
-		res, err := stmt.Exec(
+
+		SqliteMutex.Lock()
+		defer SqliteMutex.Unlock()
+
+		res, err := c.insertPackage.Exec(
 			p.Name(),
 			p.Architecture(),
 			p.Epoch(),
@@ -110,7 +132,11 @@ func (c *PrimaryDBTx) InsertPackage(packages ...*rpm.PackageFile) error {
 		// insert files
 		files := p.Files()
 		for _, f := range files {
-			stmtFiles.Exec(f, "file", i)
+			_, err := c.insertFile.Exec(f.Name(), "file", i)
+
+			if err != nil {
+				return fmt.Errorf("error inserting file %v for %v: %v", f.Name(), p, err)
+			}
 		}
 	}
 

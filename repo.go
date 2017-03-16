@@ -67,8 +67,6 @@ func (c *Repo) Validate() error {
 // cache directory. If the Repo is already cached, the cache is validated and
 // updated if the source repository has been updated.
 func (c *Repo) CacheLocal(path string) (*RepoCache, error) {
-	Dprintf("Caching %v to %s...\n", c, path)
-
 	// connect to cache
 	cache, err := NewCache(path)
 	if err != nil {
@@ -92,8 +90,12 @@ func (c *Repo) CacheLocal(path string) (*RepoCache, error) {
 // Sync syncronizes a local package repository with an upstream repository using
 // filter rules defined for the repository in its parent Yumfile. All repository
 // metadata is cached in the given cache directory.
+//
+// Analogous to the `reposync` command.
 func (c *Repo) Sync(cachedir, packagedir string) error {
 	var err error
+
+	Printf("Syncronizing %v to %v...\n", c, packagedir)
 
 	// load gpg keys
 	var keyring openpgp.KeyRing
@@ -179,7 +181,7 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 					Errorf(err, "Existing file is larger (%s) than expected (%s) for package %v", bytefmt.ByteSize(uint64(fi.Size())), bytefmt.ByteSize(uint64(p.PackageSize())), p)
 					break
 				} else {
-					Dprintf("Existing file is incomplete for package %v\n", p)
+					Printf("Existing file is incomplete for package %v\n", p)
 				}
 			}
 		}
@@ -195,7 +197,7 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	if len(missing) == 0 {
 		Dprintf("No packages scheduled for download\n")
 	} else {
-		Dprintf("Scheduled %d packages for download (%s)\n", len(missing), bytefmt.ByteSize(totalsize))
+		Printf("Downloading %d new packages (%s)\n", len(missing), bytefmt.ByteSize(totalsize))
 	}
 
 	// schedule download jobs
@@ -257,9 +259,7 @@ func (c *Repo) Sync(cachedir, packagedir string) error {
 	}
 
 	// createrepo
-	PanicOn(c.UpdateDB(packagedir))
-
-	return nil
+	return c.UpdateDB(packagedir)
 }
 
 // UpdateDB creates or updates all databases and metadata for a package
@@ -319,11 +319,11 @@ func (c *Repo) UpdateDB(path string) error {
 	close(ch)
 	wg.Wait()
 
-	if err := repo.Close(); err != nil {
-		return errors.Wrap(err, "error finalising repository databases")
+	if err := repo.Publish(); err != nil {
+		return errors.Wrap(err, "error publishing repository databases")
 	}
 
-	Printf("Created repository: %v\n", c)
+	Printf("Updated local database for %v in %v\n", c, path)
 
 	return nil
 }
