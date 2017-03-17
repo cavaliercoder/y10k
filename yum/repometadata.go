@@ -4,6 +4,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"path/filepath"
 )
 
 // RepoMetadata represents the metadata XML file for a RPM/Yum repository. It
@@ -29,6 +30,17 @@ type RepoDatabase struct {
 	OpenSize        int                  `xml:"open-size"`
 	OpenChecksum    RepoDatabaseChecksum `xml:"open-checksum"`
 	DatabaseVersion int                  `xml:"database_version"`
+}
+
+func (c RepoDatabase) IsCompressed() bool {
+	ext := filepath.Ext(c.Location.Href)
+	for _, t := range []string{".gz", ".bz2", ".xz"} {
+		if ext == t {
+			return true
+		}
+	}
+
+	return false
 }
 
 // RepoDatabaseLocation represents the URI, relative to a package repository,

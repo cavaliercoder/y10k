@@ -1,8 +1,12 @@
 # Y10k TODOs
 
+- [ ] Test primary_db with actualy yum client
+
 - [ ] Refactor funcs to isolate reposync and creatrepo
 
 - [ ] Enable adding packages to existing databases
+
+- [ ] Implement db_info.checksum in sqlite dbs
 
 - [x] Reuse DB Tx's when adding packages to a yum.Repo
 

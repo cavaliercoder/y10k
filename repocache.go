@@ -27,27 +27,16 @@ func (c *RepoCache) Update() error {
 		return err
 	}
 
-	// select primary db
-	var primarydb *yum.RepoDatabase = nil
 	for _, db := range repomd.Databases {
-		if db.Type == "primary_db" {
-			primarydb = &db
-			break
+		if _, err := c.downloadDatabase(&db); err != nil {
+			return err
 		}
-	}
 
-	if primarydb == nil {
-		return fmt.Errorf("No primary database found for repo %v", c)
-	}
-
-	// download primary database
-	if _, err := c.downloadDatabase(primarydb); err != nil {
-		return err
-	}
-
-	// decompress primary database
-	if _, err = c.decompressDatabase(primarydb); err != nil {
-		return err
+		if db.IsCompressed() {
+			if _, err = c.decompressDatabase(&db); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil

@@ -326,6 +326,7 @@ func (c *Repo) UpdateDB(path string) error {
 	close(ch)
 	wg.Wait()
 
+	// commit and package the repo
 	if err := tx.Commit(); err != nil {
 		return errors.Wrap(err, "error committing repo transactions")
 	}
