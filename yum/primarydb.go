@@ -9,21 +9,44 @@ import (
 	"sync"
 )
 
-// TODO: Add support for XML primary dbs
-
-// Queries to create primary_db schema
-const (
-	sqlCreateTables = `CREATE TABLE db_info (dbversion INTEGER, checksum TEXT);
-CREATE TABLE packages ( pkgKey INTEGER PRIMARY KEY, pkgId TEXT, name TEXT, arch TEXT, version TEXT, epoch TEXT, release TEXT, summary TEXT, description TEXT, url TEXT, time_file INTEGER, time_build INTEGER, rpm_license TEXT, rpm_vendor TEXT, rpm_group TEXT, rpm_buildhost TEXT, rpm_sourcerpm TEXT, rpm_header_start INTEGER, rpm_header_end INTEGER, rpm_packager TEXT, size_package INTEGER, size_installed INTEGER, size_archive INTEGER, location_href TEXT, location_base TEXT, checksum_type TEXT);
+// Script to create primary_db schema
+const sqlPrimaryDBSchema = `
+CREATE TABLE db_info (dbversion INTEGER, checksum TEXT);
+CREATE TABLE packages (
+	pkgKey INTEGER PRIMARY KEY
+	, pkgId TEXT
+	, name TEXT
+	, arch TEXT
+	, version TEXT
+	, epoch TEXT
+	, release TEXT
+	, summary TEXT
+	, description TEXT
+	, url TEXT
+	, time_file INTEGER
+	, time_build INTEGER
+	, rpm_license TEXT
+	, rpm_vendor TEXT
+	, rpm_group TEXT
+	, rpm_buildhost TEXT
+	, rpm_sourcerpm TEXT
+	, rpm_header_start INTEGER
+	, rpm_header_end INTEGER
+	, rpm_packager TEXT
+	, size_package INTEGER
+	, size_installed INTEGER
+	, size_archive INTEGER
+	, location_href TEXT
+	, location_base TEXT
+	, checksum_type TEXT
+);
 CREATE TABLE files ( name TEXT, type TEXT, pkgKey INTEGER);
 CREATE TABLE requires ( name TEXT, flags TEXT, epoch TEXT, version TEXT, release TEXT, pkgKey INTEGER , pre BOOLEAN DEFAULT FALSE);
 CREATE TABLE provides ( name TEXT, flags TEXT, epoch TEXT, version TEXT, release TEXT, pkgKey INTEGER );
 CREATE TABLE conflicts ( name TEXT, flags TEXT, epoch TEXT, version TEXT, release TEXT, pkgKey INTEGER );
-CREATE TABLE obsoletes ( name TEXT, flags TEXT, epoch TEXT, version TEXT, release TEXT, pkgKey INTEGER );`
+CREATE TABLE obsoletes ( name TEXT, flags TEXT, epoch TEXT, version TEXT, release TEXT, pkgKey INTEGER );
 
-	sqlCreateTriggers = `CREATE TRIGGER removals AFTER DELETE ON packages  BEGIN    DELETE FROM files WHERE pkgKey = old.pkgKey;    DELETE FROM requires WHERE pkgKey = old.pkgKey;    DELETE FROM provides WHERE pkgKey = old.pkgKey;    DELETE FROM conflicts WHERE pkgKey = old.pkgKey;    DELETE FROM obsoletes WHERE pkgKey = old.pkgKey;  END;`
-
-	sqlCreateIndexes = `CREATE INDEX packagename ON packages (name);
+CREATE INDEX packagename ON packages (name);
 CREATE INDEX packageId ON packages (pkgId);
 CREATE INDEX filenames ON files (name);
 CREATE INDEX pkgfiles ON files (pkgKey);
@@ -32,8 +55,16 @@ CREATE INDEX requiresname ON requires (name);
 CREATE INDEX pkgprovides on provides (pkgKey);
 CREATE INDEX providesname ON provides (name);
 CREATE INDEX pkgconflicts on conflicts (pkgKey);
-CREATE INDEX pkgobsoletes on obsoletes (pkgKey);`
-)
+CREATE INDEX pkgobsoletes on obsoletes (pkgKey);
+
+CREATE TRIGGER removals AFTER DELETE ON packages
+BEGIN
+	DELETE FROM files WHERE pkgKey = old.pkgKey;
+	DELETE FROM requires WHERE pkgKey = old.pkgKey;
+	DELETE FROM provides WHERE pkgKey = old.pkgKey;
+	DELETE FROM conflicts WHERE pkgKey = old.pkgKey;
+	DELETE FROM obsoletes WHERE pkgKey = old.pkgKey;
+END;`
 
 const sqlSelectPackages = `SELECT
  pkgKey
@@ -51,12 +82,11 @@ const sqlSelectPackages = `SELECT
  , time_build
 FROM packages;`
 
-// global mutex to syncronize database writes to one thread at a time.
-var SqliteMutex = &sync.Mutex{}
-
 // PrimaryDB is an SQLite database which contains package data for a
 // yum package repository.
 type PrimaryDB struct {
+	sync.Mutex
+
 	db   *sql.DB
 	path string
 }
@@ -69,36 +99,17 @@ func NewPrimaryDB(path string) (*PrimaryDB, error) {
 		return nil, err
 	}
 
-	db, err := sql.Open("sqlite3", path)
+	pdb, err := OpenPrimaryDB(path)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating Primary DB: %v", err)
+		return nil, err
 	}
-
-	SqliteMutex.Lock()
-	defer SqliteMutex.Unlock()
 
 	// create database tables
-	_, err = db.Exec(sqlCreateTables)
-	if err != nil {
-		return nil, fmt.Errorf("Error creating Primary DB tables: %v", err)
+	if _, err = pdb.db.Exec(sqlPrimaryDBSchema); err != nil {
+		return nil, fmt.Errorf("error provisioning Primary DB schema: %v", err)
 	}
 
-	// create database indexes
-	_, err = db.Exec(sqlCreateIndexes)
-	if err != nil {
-		return nil, fmt.Errorf("Error creating Primary DB indexes: %v", err)
-	}
-
-	// create database triggers
-	_, err = db.Exec(sqlCreateTriggers)
-	if err != nil {
-		return nil, fmt.Errorf("Error creating Primary DB triggers: %v", err)
-	}
-
-	return &PrimaryDB{
-		db:   db,
-		path: path,
-	}, nil
+	return pdb, nil
 }
 
 // OpenPrimaryDB opens a primary_db SQLite database from file and return a
@@ -132,27 +143,27 @@ func (c *PrimaryDB) Path() string {
 }
 
 func (c *PrimaryDB) Close() error {
-	SqliteMutex.Lock()
-	defer SqliteMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	return c.db.Close()
 }
 
 func (c *PrimaryDB) Begin() (Tx, error) {
-	SqliteMutex.Lock()
+	c.Lock()
 	tx, err := c.db.Begin()
 	if err != nil {
-		SqliteMutex.Unlock()
+		c.Unlock()
 		return nil, err
 	}
 
-	SqliteMutex.Unlock() // before lock in NewPrimaryDBTx
-	return NewPrimaryDBTx(tx)
+	c.Unlock() // before lock in NewPrimaryDBTx
+	return NewPrimaryDBTx(tx, &c.Mutex)
 }
 
 // Packages returns all packages listed in the primary_db.
 func (c *PrimaryDB) Packages() (PackageEntries, error) {
-	SqliteMutex.Lock()
-	defer SqliteMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	// select packages
 	rows, err := c.db.Query(sqlSelectPackages)
@@ -185,8 +196,8 @@ func (c *PrimaryDB) Packages() (PackageEntries, error) {
 func (c *PrimaryDB) DependenciesByPackage(pkgKey int, typ string) (rpm.Dependencies, error) {
 	q := fmt.Sprintf("SELECT name, flags, epoch, version, release FROM %s WHERE pkgKey = %d", typ, pkgKey)
 
-	SqliteMutex.Lock()
-	defer SqliteMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	// select packages
 	rows, err := c.db.Query(q)
@@ -233,8 +244,8 @@ func (c *PrimaryDB) DependenciesByPackage(pkgKey int, typ string) (rpm.Dependenc
 func (c *PrimaryDB) FilesByPackage(pkgKey int) ([]string, error) {
 	q := fmt.Sprintf("SELECT name FROM files WHERE pkgKey = %d", pkgKey)
 
-	SqliteMutex.Lock()
-	defer SqliteMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	// select packages
 	rows, err := c.db.Query(q)

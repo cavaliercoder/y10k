@@ -7,6 +7,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 const (
@@ -42,16 +43,18 @@ const (
 
 // primaryDBTx is a SQLite transaction opened on the primary database.
 type primaryDBTx struct {
+	*sync.Mutex
+
 	tx            *sql.Tx
 	insertPackage *sql.Stmt
 	insertFile    *sql.Stmt
 }
 
-func NewPrimaryDBTx(tx *sql.Tx) (Tx, error) {
-	c := &primaryDBTx{tx, nil, nil}
+func NewPrimaryDBTx(tx *sql.Tx, mu *sync.Mutex) (Tx, error) {
+	c := &primaryDBTx{mu, tx, nil, nil}
 
-	SqliteMutex.Lock()
-	defer SqliteMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 
 	// prepare insert package query
 	if stmt, err := tx.Prepare(sqlInsertPackage); err != nil {
@@ -71,14 +74,14 @@ func NewPrimaryDBTx(tx *sql.Tx) (Tx, error) {
 }
 
 func (c *primaryDBTx) Commit() error {
-	SqliteMutex.Lock()
-	defer SqliteMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	return c.tx.Commit()
 }
 
 func (c *primaryDBTx) Rollback() error {
-	SqliteMutex.Lock()
-	defer SqliteMutex.Unlock()
+	c.Lock()
+	defer c.Unlock()
 	return c.tx.Rollback()
 }
 
@@ -91,8 +94,8 @@ func (c *primaryDBTx) AddPackage(packages ...*rpm.PackageFile) error {
 
 		href := filepath.Base(p.Path())
 
-		SqliteMutex.Lock()
-		defer SqliteMutex.Unlock()
+		c.Lock()
+		defer c.Unlock()
 
 		res, err := c.insertPackage.Exec(
 			p.Name(),
