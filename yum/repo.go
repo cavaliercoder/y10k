@@ -4,15 +4,18 @@ import (
 	"./compress"
 	"./crypto"
 	"fmt"
-	"github.com/cavaliercoder/go-rpm"
 	"os"
 	"path/filepath"
 	"time"
 )
 
+// Repo is a Yum package repository, including all of its associated databases.
 type Repo struct {
 	// BasePath is a directory where the package repository file structure will
-	// be written.
+	// be written. This does not need to be the directory where the repo
+	// package reside.
+	// The database directory `/repodata` will be appended to the BasePath
+	// automatically.
 	BasePath string
 
 	// list of active databases
@@ -174,25 +177,25 @@ func (c *Repo) publishDB(db DB) (*RepoDatabase, error) {
 	return m, nil
 }
 
-// AddPackage adds an RPM package to all active databases in the repository.
-func (c *Repo) AddPackage(p *rpm.PackageFile) error {
-	for key, db := range c.dbs {
-		// TODO: reuse transactions
+// Begin opens a transaction for every active database and wraps them into a
+// single tranformer that the caller may use to modify every database in a
+// single action.
+func (c *Repo) Begin() (Tx, error) {
+	// create a tx for every database
+	txs := make([]Tx, len(c.dbs))
+	i := 0
+	for _, db := range c.dbs {
 		tx, err := db.Begin()
 		if err != nil {
-			return err
+			// TODO: wind back all started transactions
+			return nil, err
 		}
 
-		if err := tx.AddPackage(p); err != nil {
-			return fmt.Errorf("Error adding package %v to %v: %v", p, key, err)
-		}
-
-		if err := tx.Commit(); err != nil {
-			return err
-		}
+		txs[i] = tx
+		i++
 	}
 
-	return nil
+	return RepoTx(txs), nil
 }
 
 func (c *Repo) PrimaryDB() *PrimaryDB {

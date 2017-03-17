@@ -286,6 +286,12 @@ func (c *Repo) UpdateDB(path string) error {
 
 	// TODO: filter and GPG check packages here
 
+	// start db transactions
+	tx, err := repo.Begin()
+	if err != nil {
+		return err
+	}
+
 	// start workers
 	ch := make(chan *rpm.PackageFile)
 	workerCount := runtime.NumCPU()
@@ -298,10 +304,11 @@ func (c *Repo) UpdateDB(path string) error {
 			defer wg.Done()
 
 			for p := range ch {
-				Dprintf("[worker %v] added %v\n", worker, p)
-				if err := repo.AddPackage(p); err != nil {
+				if err := tx.AddPackage(p); err != nil {
 					Errorf(err, "[worker %v] error adding package %v", worker, p)
 					// TODO: signal parent that an error occurred
+				} else {
+					Dprintf("[worker %v] added %v\n", worker, p)
 				}
 			}
 		}(i + 1)
@@ -318,6 +325,10 @@ func (c *Repo) UpdateDB(path string) error {
 
 	close(ch)
 	wg.Wait()
+
+	if err := tx.Commit(); err != nil {
+		return errors.Wrap(err, "error committing repo transactions")
+	}
 
 	if err := repo.Publish(); err != nil {
 		return errors.Wrap(err, "error publishing repository databases")

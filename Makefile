@@ -1,13 +1,14 @@
 APP = y10k
 APPVER = 0.3.0
+
 ARCH = $(shell uname -m)
 PACKAGE = $(APP)-$(APPVER).$(ARCH)
 TARBALL = $(PACKAGE).tar.gz
 
 GO = go
 GOGET = $(GO) get -v -u
-RM = rm -f
-TAR = tar
+RM = rm -fv
+TAR = tar -v
 
 all: $(APP)
 
@@ -25,8 +26,8 @@ get-deps:
 	$(GOGET) xi2.org/x/xz
 
 tar: $(APP) README.md
-	mkdir $(PACKAGE)
-	cp -r $(APP) README.md $(PACKAGE)/
+	mkdir -pv $(PACKAGE)
+	cp -vr $(APP) README.md $(PACKAGE)/
 	$(TAR) -czf $(TARBALL) $(PACKAGE)/
 	$(RM) -r $(PACKAGE)
 
