@@ -1,9 +1,9 @@
 package main
 
 import (
+	"./yum"
 	"fmt"
 	"github.com/cavaliercoder/go-rpm"
-	"github.com/cavaliercoder/y10k/yum"
 )
 
 // FilterPackages returns a list of packages filtered according the repo's

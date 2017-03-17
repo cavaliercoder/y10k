@@ -1,10 +1,10 @@
 package yum
 
 import (
+	"./compress"
+	"./crypto"
 	"fmt"
 	"github.com/cavaliercoder/go-rpm"
-	"github.com/cavaliercoder/y10k/yum/compress"
-	"github.com/cavaliercoder/y10k/yum/crypto"
 	"os"
 	"path/filepath"
 	"time"
@@ -28,12 +28,17 @@ func NewRepo(path string) *Repo {
 
 // Bootstrap creates the configured repository file structure and databases.
 func (c *Repo) Bootstrap() error {
+
+	// TODO: Is this necessary outside of .Publish()?
+
 	// create repodata directory
 	rdata := filepath.Join(c.BasePath, "/repodata")
 	gen := filepath.Join(rdata, "/gen")
 	if err := os.MkdirAll(gen, 0755); err != nil {
 		return err
 	}
+
+	// TODO: /gen might belong in temp or memory, instead of ./repodata/gen
 
 	// create primary db
 	pdbPath := filepath.Join(c.BasePath, "/repodata/gen/primary_db.sqlite")
@@ -56,7 +61,7 @@ func (c *Repo) Publish() error {
 		Databases: make([]RepoDatabase, 0),
 	}
 
-	// add primary db
+	// publish all dbs and append metadata
 	for _, db := range c.dbs {
 		m, err := c.publishDB(db)
 		if err != nil {
@@ -77,13 +82,11 @@ func (c *Repo) Publish() error {
 		return err
 	}
 
-	// delete repodata/gen/
-	/* TODO
+	// TODO: delete repodata/gen/
 	gen := filepath.Join(c.BasePath, "/repodata/gen/")
 	if err := os.RemoveAll(gen); err != nil {
 		return fmt.Errorf("Error cleaning up repodata: %v", err)
 	}
-	*/
 
 	return nil
 }

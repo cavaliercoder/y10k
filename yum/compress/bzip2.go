@@ -14,8 +14,14 @@ func bzip2Compress(w io.Writer, r io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
+	n, err := io.Copy(compress, r)
 
-	return io.Copy(compress, r)
+	// compressor must be explicitely closed or the result is an empty file
+	if err := compress.Close(); err != nil {
+		return n, err
+	}
+
+	return n, err
 }
 
 func NewBzip2Compressor() Compressor {

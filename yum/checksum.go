@@ -1,8 +1,8 @@
 package yum
 
 import (
+	"./crypto"
 	"fmt"
-	"github.com/cavaliercoder/y10k/yum/crypto"
 	"io"
 	"os"
 )

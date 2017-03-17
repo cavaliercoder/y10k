@@ -1,11 +1,11 @@
 package main
 
 import (
+	"./yum"
 	"bytes"
 	"compress/bzip2"
 	"compress/gzip"
 	"fmt"
-	"github.com/cavaliercoder/y10k/yum"
 	"io"
 	"io/ioutil"
 	"net/http"

@@ -1,12 +1,12 @@
 # Y10k TODOs
 
-- [ ] Fix issue with 0-byte bzip2 files
-
 - [ ] Reuse DB Tx's when adding packages to a yum.Repo
 
 - [ ] Refactor funcs to isolate reposync and creatrepo
 
 - [ ] Enable adding packages to existing databases
+
+- [x] Fix issue with 0-byte bzip2 files
 
 - [x] Enable transactions for batch imports in createrepo
 
