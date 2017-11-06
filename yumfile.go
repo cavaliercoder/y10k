@@ -315,9 +315,16 @@ func (c *Yumfile) createrepo(repo *Repo) error {
 	if DebugMode {
 		args = append(args, "--verbose")
 	}
-
+	
+	// set path to create repo for
+	repoPath :=fmt.Sprintf("./%s", repo.ID)
+	if repo.LocalPath != "" {
+		repoPath = repo.LocalPath
+	}
+	
+	// Set groupfile, relative to the repoPath
 	if repo.Groupfile != "" {
-		args = append(args, fmt.Sprintf("--groupfile=%s", repo.Groupfile))
+		args = append(args, fmt.Sprintf("--groupfile=%s/%s", repoPath, repo.Groupfile))
 	}
 
 	// non-default checksum type
@@ -326,12 +333,8 @@ func (c *Yumfile) createrepo(repo *Repo) error {
 	}
 
 	// path to create repo for
-	if repo.LocalPath != "" {
-		args = append(args, repo.LocalPath)
-	} else {
-		args = append(args, fmt.Sprintf("./%s", repo.ID))
-	}
-
+	args = append(args, repoPath)
+	
 	// execute and capture output
 	if err := Exec("createrepo", args...); err != nil {
 		return err
